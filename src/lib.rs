@@ -7,7 +7,7 @@ pub fn fetch_log() -> io::Result<String> {
     get_git_dir()?;
 
     // Run `git log` to fetch all commits
-    let log = Command::new("git").arg("log").output()?;
+    let log = Command::new("git").arg("log").arg("--pretty=format:'%H|%an|%ae|%s'").output()?;
 
     if log.status.success() {
         Ok(String::from_utf8_lossy(&log.stdout).to_string())
