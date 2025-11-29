@@ -1,10 +1,8 @@
-use mixed_pickles::fetch_log;
+use mixed_pickles::parse_commit;
 use std::io;
 
 fn main() -> io::Result<()> {
-    match fetch_log() {
-        Ok(log) => println!("{:#?}", log),
-        Err(e) => eprintln!("Failed to run git log: {}", e),
-    }
+    let parsed_commit = parse_commit().ok_or("Was not able to parse commit.");
+    println!("{:?}", parsed_commit);
     Ok(())
 }
