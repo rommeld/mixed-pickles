@@ -59,3 +59,46 @@ pub fn parse_commit() -> Option<Commit> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::io::ErrorKind;
+
+    #[test]
+    fn test_get_git_dir_exists() {
+        // This test assumes it's run from a git repository
+        let result = get_git_dir();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_get_git_dir_not_found() {
+        // Save current directory
+        let original_dir = env::current_dir().expect("Failed to get current directory");
+
+        // Change to a directory without .git (e.g., /tmp)
+        env::set_current_dir("/tmp").expect("Failed to change to /tmp directory");
+
+        let result = get_git_dir();
+
+        // Restore original directory before assertions to ensure cleanup
+        env::set_current_dir(&original_dir).expect("Failed to restore original directory");
+
+        // Now verify the result
+        assert!(result.is_err(), "Expected error when .git directory doesn't exist");
+
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.kind(),
+            ErrorKind::NotFound,
+            "Expected NotFound error kind"
+        );
+        assert_eq!(
+            err.to_string(),
+            ".git directory not found",
+            "Expected specific error message"
+        );
+    }
+}
