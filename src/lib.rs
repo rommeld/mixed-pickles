@@ -10,9 +10,9 @@ pub struct Commit {
     pub subject: String,
 }
 
-fn fetch_log() -> io::Result<String> {
+fn git_log() -> io::Result<String> {
     // Check if .git directory exists before attempting to run git log
-    get_git_dir()?;
+    check_git_dir()?;
 
     // Run `git log` to fetch all commits
     let log = Command::new("git")
@@ -29,7 +29,7 @@ fn fetch_log() -> io::Result<String> {
     }
 }
 
-fn get_git_dir() -> io::Result<()> {
+fn check_git_dir() -> io::Result<()> {
     if Path::new(".git").exists() {
         Ok(())
     } else {
@@ -40,8 +40,8 @@ fn get_git_dir() -> io::Result<()> {
     }
 }
 
-pub fn parse_commit() -> Option<Commit> {
-    let log = fetch_log().ok()?;
+pub fn latest_commit() -> Option<Commit> {
+    let log = git_log().ok()?;
     let first_line = log.lines().next()?;
 
     // Remove surrounding quotes from the format string
@@ -67,21 +67,21 @@ mod tests {
     use std::io::ErrorKind;
 
     #[test]
-    fn test_get_git_dir_exists() {
+    fn test_check_git_dir_exists() {
         // This test assumes it's run from a git repository
-        let result = get_git_dir();
+        let result = check_git_dir();
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_get_git_dir_not_found() {
+    fn test_check_git_dir_not_found() {
         // Save current directory
         let original_dir = env::current_dir().expect("Failed to get current directory");
 
         // Change to a directory without .git (e.g., /tmp)
         env::set_current_dir("/tmp").expect("Failed to change to /tmp directory");
 
-        let result = get_git_dir();
+        let result = check_git_dir();
 
         // Restore original directory before assertions to ensure cleanup
         env::set_current_dir(&original_dir).expect("Failed to restore original directory");
