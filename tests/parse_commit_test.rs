@@ -1,9 +1,9 @@
-use mixed_pickles::{parse_commit, Commit};
+use mixed_pickles::{latest_commit, Commit};
 
 #[test]
 fn test_parse_commit_returns_valid_commit() {
     // This test assumes it's run from a git repository with at least one commit
-    let result = parse_commit();
+    let result = latest_commit();
 
     assert!(result.is_some(), "Expected a commit to be parsed from git log");
 
