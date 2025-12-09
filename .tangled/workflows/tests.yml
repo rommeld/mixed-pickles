@@ -1,4 +1,4 @@
-when
+when:
   - event: ["push", "manual"]
     branch: ["main"]
 
