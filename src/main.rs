@@ -1,6 +1,7 @@
 use std::{io, process::Command};
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Commit {
     hash: String,
     author_name: String,
@@ -43,9 +44,19 @@ fn main() -> Result<(), io::Error> {
         } else {
             println!("Log couldn't be loaded.")
         };
-    };
+    }
 
-    println!("{:?}", commit_vec);
+    // Check for subject length
+    for v in commit_vec {
+        // TODO: Handle without suffix 'feat', 'fix', 'refact', and 'doc'
+        if v.subject.len() <= 10 {
+            println!(
+                "Hash {:?}: {:?} has less than 10 characters",
+                &v.hash[..7],
+                &v.subject[..7]
+            )
+        }
+    }
 
     Ok(())
 }
