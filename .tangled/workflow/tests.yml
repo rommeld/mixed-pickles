@@ -1,0 +1,21 @@
+when
+  - event: ["push", "manual"]
+    branch: ["main"]
+
+engine: "nixery"
+
+clone:
+  skip: false
+  depth: 1
+  submodules: false
+
+dependencies:
+  nixpkgs:
+    - rust
+
+steps:
+  - name: "Integration Tests"
+    command: "cargo test"
+    environment:
+      GOOS: "linux"
+      GOARCH: "arm64"
