@@ -22,30 +22,31 @@ fn binary_produces_valid_output() {
     let output = run_binary();
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // The output should either be empty (all commits have subjects > 10 chars)
-    // or contain warning messages about short subjects
+    // The output should either indicate success or list short commit messages
     if !stdout.is_empty() {
+        let has_success_msg = stdout.contains("adequately executed");
+        let has_warning_msg = stdout.contains("short messages (< 10 chars)");
         assert!(
-            stdout.contains("has less than 10 characters"),
-            "Output should contain the expected warning format"
+            has_success_msg || has_warning_msg,
+            "Output should contain expected format, got: {}",
+            stdout
         );
     }
 }
 
 #[test]
-fn output_format_contains_hash_prefix() {
+fn output_format_lists_commits_with_indentation() {
     let output = run_binary();
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // If there are warnings, they should start with "Hash"
-    for line in stdout.lines() {
-        if !line.is_empty() {
-            assert!(
-                line.starts_with("Hash"),
-                "Warning lines should start with 'Hash', got: {}",
-                line
-            );
-        }
+    // If there are short commits, they should be listed with indentation
+    if stdout.contains("short messages") {
+        let has_indented_commit = stdout.lines().any(|line| line.starts_with("  "));
+        assert!(
+            has_indented_commit,
+            "Short commits should be listed with indentation, got: {}",
+            stdout
+        );
     }
 }
 

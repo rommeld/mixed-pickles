@@ -57,9 +57,18 @@ fn main() -> Result<(), io::Error> {
         }
     }
 
-    println!("Analyzed {:?} commits", &commit_vec.len());
-    println!("Found {:?} commits with short messages (< 10 characters)", &improved_hash_output.len());
-    println!("{:?}: {:?}", &improved_hash_output, &improved_subject_output);
+    if improved_hash_output.is_empty() {
+        println!("Commit messages are adequately executed.");
+    } else {
+        println!("Analyzed {} commits\n", commit_vec.len());
+        println!(
+            "Found {} commits with short messages (< 10 chars):",
+            improved_hash_output.len()
+        );
+        for (hash, subject) in improved_hash_output.iter().zip(improved_subject_output.iter()) {
+            println!("  {}: \"{}\"", hash, subject);
+        }
+    }
 
     Ok(())
 }
