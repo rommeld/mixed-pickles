@@ -46,17 +46,20 @@ fn main() -> Result<(), io::Error> {
         };
     }
 
+    let mut improved_hash_output = Vec::new();
+    let mut improved_subject_output = Vec::new();
     // Check for subject length
-    for v in commit_vec {
+    for v in &commit_vec {
         // TODO: Handle without suffix 'feat', 'fix', 'refact', and 'doc'
         if v.subject.len() <= 10 {
-            println!(
-                "Hash {:?}: {:?} has less than 10 characters",
-                &v.hash[..7],
-                &v.subject.get(..7).unwrap_or(&v.subject)
-            )
+            improved_hash_output.push(&v.hash[..7]);
+            improved_subject_output.push(&v.subject);
         }
     }
+
+    println!("Analyzed {:?} commits", &commit_vec.len());
+    println!("Found {:?} commits with short messages (< 10 characters)", &improved_hash_output.len());
+    println!("{:?}: {:?}", &improved_hash_output, &improved_subject_output);
 
     Ok(())
 }
