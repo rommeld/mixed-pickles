@@ -53,7 +53,7 @@ fn main() -> Result<(), io::Error> {
             println!(
                 "Hash {:?}: {:?} has less than 10 characters",
                 &v.hash[..7],
-                &v.subject[..7]
+                &v.subject.get(..7).unwrap_or(&v.subject)
             )
         }
     }

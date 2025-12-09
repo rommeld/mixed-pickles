@@ -71,7 +71,11 @@ mod parsing_tests {
         let parts: Vec<&str> = input.split("|").collect();
 
         // This demonstrates a potential bug in the current implementation
-        assert_eq!(parts.len(), 5, "Subject with pipe creates 5 parts instead of 4");
+        assert_eq!(
+            parts.len(),
+            5,
+            "Subject with pipe creates 5 parts instead of 4"
+        );
     }
 
     #[test]
@@ -88,8 +92,14 @@ mod parsing_tests {
         let short_subject = "fix bug";
         let long_subject = "feat: implement user authentication system";
 
-        assert!(short_subject.len() <= 10, "Short subject should trigger warning");
-        assert!(long_subject.len() > 10, "Long subject should not trigger warning");
+        assert!(
+            short_subject.len() <= 10,
+            "Short subject should trigger warning"
+        );
+        assert!(
+            long_subject.len() > 10,
+            "Long subject should not trigger warning"
+        );
     }
 
     #[test]
