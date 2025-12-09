@@ -65,7 +65,10 @@ fn main() -> Result<(), io::Error> {
             "Found {} commits with short messages (< 10 chars):",
             improved_hash_output.len()
         );
-        for (hash, subject) in improved_hash_output.iter().zip(improved_subject_output.iter()) {
+        for (hash, subject) in improved_hash_output
+            .iter()
+            .zip(improved_subject_output.iter())
+        {
             println!("  {}: \"{}\"", hash, subject);
         }
     }
