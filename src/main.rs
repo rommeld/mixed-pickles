@@ -1,6 +1,6 @@
+use clap::Parser;
 use std::{io, process::Command};
 use thiserror::Error;
-use clap::Parser;
 
 #[derive(Parser)]
 struct GitCLI {
@@ -9,7 +9,7 @@ struct GitCLI {
     #[arg(short, long)]
     limit: String,
     #[arg(short, long)]
-    threshold: String
+    threshold: String,
 }
 
 #[derive(Debug)]
