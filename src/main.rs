@@ -1,4 +1,15 @@
 use std::{io, process::Command};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum AnalyzerError {
+    #[error("Failed to execute bianry.")]
+    ExecutionError(#[from] io::Error),
+    #[error("{path} not a git repository.")]
+    RepositoryError { path: String },
+    #[error("Output is not a valid UTF-8.")]
+    UTFError(String),
+}
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -10,7 +21,7 @@ struct Commit {
     subject: String,
 }
 
-fn main() -> Result<(), io::Error> {
+fn main() -> Result<(), crate::AnalyzerError> {
     let log_command = Command::new("git")
         .arg("log")
         .arg("--pretty=format:%H|%an|%ae|%s")
