@@ -1,14 +1,15 @@
 use std::{io, process::Command};
 use thiserror::Error;
+use clap::Parser;
 
-#[derive(Error, Debug)]
-pub enum AnalyzerError {
-    #[error("Failed to execute bianry.")]
-    ExecutionError(#[from] io::Error),
-    #[error("{path} not a git repository.")]
-    RepositoryError { path: String },
-    #[error("Output is not a valid UTF-8.")]
-    UTFError(String),
+#[derive(Parser)]
+struct GitCLI {
+    #[arg(long)]
+    repo_path: String,
+    #[arg(short, long)]
+    limit: String,
+    #[arg(short, long)]
+    threshold: String
 }
 
 #[derive(Debug)]
@@ -19,6 +20,16 @@ struct Commit {
     // TODO: validate email with '@'
     author_email: String,
     subject: String,
+}
+
+#[derive(Error, Debug)]
+pub enum AnalyzerError {
+    #[error("Failed to execute bianry.")]
+    ExecutionError(#[from] io::Error),
+    #[error("{path} not a git repository.")]
+    RepositoryError { path: String },
+    #[error("Output is not a valid UTF-8.")]
+    UTFError(String),
 }
 
 fn main() -> Result<(), crate::AnalyzerError> {
