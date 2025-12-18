@@ -7,9 +7,9 @@ struct GitCLI {
     #[arg(long)]
     repo_path: String,
     #[arg(short, long)]
-    limit: String,
+    limit: usize,
     #[arg(short, long)]
-    threshold: String,
+    threshold: usize,
 }
 
 #[derive(Debug)]
