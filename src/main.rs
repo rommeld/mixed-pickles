@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::{env, io, path::PathBuf, process::Command};
+use thiserror::Error;
 
 #[derive(Parser, Debug)]
 struct GitCLI {
@@ -17,9 +18,22 @@ struct GitCLI {
 struct Commit {
     hash: String,
     author_name: String,
-    // TODO: validate email with '@'
     author_email: String,
     subject: String,
+}
+
+#[derive(Error, Debug)]
+pub enum CLIError {
+    #[error("Path '{0}' is not a git repository")]
+    NotARepository(PathBuf),
+    #[error("Path '{0}' does not exist")]
+    PathNotFound(PathBuf),
+    #[error("Git command failed: {0}")]
+    GitCommandFailed(String),
+    #[error("No commits found in repository")]
+    NoCommitsFound,
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
 }
 
 #[allow(dead_code)]
@@ -27,8 +41,21 @@ fn fetch_current_path() -> Result<PathBuf, io::Error> {
     env::current_dir()
 }
 
-fn main() -> Result<(), io::Error> {
+fn main() -> Result<(), CLIError> {
     let git_cli = GitCLI::parse();
+
+    // Validate path if provided
+    let repo_path = if let Some(path) = &git_cli.path {
+        if !path.exists() {
+            return Err(CLIError::PathNotFound(path.clone()));
+        }
+        if !path.join(".git").exists() {
+            return Err(CLIError::NotARepository(path.clone()));
+        }
+        Some(path)
+    } else {
+        None
+    };
 
     let args: Vec<String> = vec![
         "log".to_string(),
@@ -37,11 +64,16 @@ fn main() -> Result<(), io::Error> {
 
     let mut command = Command::new("git");
 
-    if let Some(path) = &git_cli.path {
+    if let Some(path) = repo_path {
         command.current_dir(path);
     }
 
     let log_command = command.args(&args).output()?;
+
+    if !log_command.status.success() {
+        let stderr = String::from_utf8_lossy(&log_command.stderr);
+        return Err(CLIError::GitCommandFailed(stderr.trim().to_string()));
+    }
 
     let log_output = String::from_utf8_lossy(&log_command.stdout);
 
@@ -81,7 +113,7 @@ fn main() -> Result<(), io::Error> {
     };
 
     for v in commits_to_check {
-        // TODO: Handle without suffix 'feat', 'fix', 'refact', and 'doc'
+        // TODO: Check for suffix 'feat', 'fix', 'refact', and 'doc'
         if v.subject.len() <= git_cli.threshold {
             improved_hash_output.push(&v.hash[..7]);
             improved_subject_output.push(&v.subject);
