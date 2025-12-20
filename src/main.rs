@@ -1,14 +1,14 @@
 use clap::Parser;
-use std::{io, process::Command};
-use thiserror::Error;
+use std::{env, io, path::PathBuf, process::Command};
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 struct GitCLI {
+    // --path /path/to/repo
     #[arg(long)]
-    repo_path: String,
+    path: Option<PathBuf>,
     #[arg(short, long)]
-    limit: usize,
-    #[arg(short, long)]
+    limit: Option<usize>,
+    #[arg(short, long, default_value_t = 30)]
     threshold: usize,
 }
 
@@ -22,22 +22,26 @@ struct Commit {
     subject: String,
 }
 
-#[derive(Error, Debug)]
-pub enum AnalyzerError {
-    #[error("Failed to execute bianry.")]
-    ExecutionError(#[from] io::Error),
-    #[error("{path} not a git repository.")]
-    RepositoryError { path: String },
-    #[error("Output is not a valid UTF-8.")]
-    UTFError(String),
+#[allow(dead_code)]
+fn fetch_current_path() -> Result<PathBuf, io::Error> {
+    env::current_dir()
 }
 
-fn main() -> Result<(), crate::AnalyzerError> {
-    let log_command = Command::new("git")
-        .arg("log")
-        .arg("--pretty=format:%H|%an|%ae|%s")
-        .args(["-n", "5"])
-        .output()?;
+fn main() -> Result<(), io::Error> {
+    let git_cli = GitCLI::parse();
+
+    let args: Vec<String> = vec![
+        "log".to_string(),
+        "--pretty=format:%H|%an|%ae|%s".to_string(),
+    ];
+
+    let mut command = Command::new("git");
+
+    if let Some(path) = &git_cli.path {
+        command.current_dir(path);
+    }
+
+    let log_command = command.args(&args).output()?;
 
     let log_output = String::from_utf8_lossy(&log_command.stdout);
 
@@ -71,9 +75,14 @@ fn main() -> Result<(), crate::AnalyzerError> {
     let mut improved_hash_output = Vec::new();
     let mut improved_subject_output = Vec::new();
     // Check for subject length
-    for v in &commit_vec {
+    let commits_to_check: Box<dyn Iterator<Item = &Commit>> = match git_cli.limit {
+        Some(limit) => Box::new(commit_vec.iter().take(limit)),
+        None => Box::new(commit_vec.iter()),
+    };
+
+    for v in commits_to_check {
         // TODO: Handle without suffix 'feat', 'fix', 'refact', and 'doc'
-        if v.subject.len() <= 10 {
+        if v.subject.len() <= git_cli.threshold {
             improved_hash_output.push(&v.hash[..7]);
             improved_subject_output.push(&v.subject);
         }
@@ -82,10 +91,12 @@ fn main() -> Result<(), crate::AnalyzerError> {
     if improved_hash_output.is_empty() {
         println!("Commit messages are adequately executed.");
     } else {
-        println!("Analyzed {} commits\n", commit_vec.len());
+        let analyzed_count = git_cli.limit.unwrap_or(commit_vec.len());
+        println!("Analyzed {} commits\n", analyzed_count);
         println!(
-            "Found {} commits with short messages (< 10 chars):",
-            improved_hash_output.len()
+            "Found {} commits with short messages (< {} chars):",
+            improved_hash_output.len(),
+            &git_cli.threshold
         );
         for (hash, subject) in improved_hash_output
             .iter()
