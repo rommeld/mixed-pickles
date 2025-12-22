@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::{env, io, path::PathBuf, process::Command};
+use std::{io, path::PathBuf, process::Command};
 use thiserror::Error;
 
 #[derive(Parser, Debug)]
@@ -34,11 +34,6 @@ pub enum CLIError {
     NoCommitsFound,
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
-}
-
-#[allow(dead_code)]
-fn fetch_current_path() -> Result<PathBuf, io::Error> {
-    env::current_dir()
 }
 
 fn main() -> Result<(), CLIError> {
@@ -83,7 +78,7 @@ fn main() -> Result<(), CLIError> {
 
     for commit_message in parsed_commit
         .into_iter()
-        .map(|pipe_character| pipe_character.split("|"))
+        .map(|pipe_character| pipe_character.splitn(4, "|"))
     {
         let mut log_vector = Vec::new();
 
@@ -124,7 +119,10 @@ fn main() -> Result<(), CLIError> {
         println!("Commit messages are adequately executed.");
     } else {
         let analyzed_count = git_cli.limit.unwrap_or(commit_vec.len());
-        println!("Analyzed {} commits\n", analyzed_count);
+        println!(
+            "Analyzed {} commits on path {:?}\n",
+            analyzed_count, &git_cli.path
+        );
         println!(
             "Found {} commits with short messages (< {} chars):",
             improved_hash_output.len(),
