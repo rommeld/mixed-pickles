@@ -132,15 +132,19 @@ mod cli_tests {
     #[test]
     fn short_limit_flag() {
         let output = run_binary_with_args(&["-l", "3"]);
-        assert!(output.status.success(), "Should succeed with -l short flag");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "Should succeed with -l short flag, stderr: {}",
+            stderr
+        );
         let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.contains("Analyzed") {
-            assert!(
-                stdout.contains("Analyzed 3 commits"),
-                "Should analyze 3 commits with short flag, got: {}",
-                stdout
-            );
-        }
+        // Either shows analyzed count or "adequately executed" message
+        assert!(
+            stdout.contains("Analyzed 3 commits") || stdout.contains("adequately executed"),
+            "Should analyze 3 commits or show success message, got: {}",
+            stdout
+        );
     }
 
     #[test]
