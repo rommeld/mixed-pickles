@@ -24,11 +24,13 @@ fn main() -> Result<(), CLIError> {
         validate_repo_path(path)?;
     }
 
-    let commits = Commit::fetch_all(git_cli.path.as_ref())?;
+    // Pass limit to git to only fetch needed commits
+    let commits = Commit::fetch_all(git_cli.path.as_ref(), git_cli.limit)?;
 
-    let short_commits = Commit::find_short(&commits, git_cli.limit, git_cli.threshold);
+    let short_commits = Commit::find_short(&commits, git_cli.threshold);
 
-    let analyzed_count = git_cli.limit.unwrap_or(commits.len());
+    // analyzed_count equals commits.len() since limit is applied at fetch time
+    let analyzed_count = commits.len();
     print_results(
         &short_commits,
         commits.len(),

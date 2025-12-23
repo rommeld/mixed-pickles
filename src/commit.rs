@@ -1,4 +1,4 @@
-//! Commit parsing and validationuse regex::Regex;
+//! Commit parsing and validation;
 use regex::Regex;
 use std::{
     path::{Path, PathBuf},
@@ -25,11 +25,19 @@ pub struct Commit {
 }
 
 impl Commit {
-    pub fn fetch_all(repo_path: Option<&PathBuf>) -> Result<Vec<Commit>, CLIError> {
-        let args: Vec<String> = vec![
+    pub fn fetch_all(
+        repo_path: Option<&PathBuf>,
+        limit: Option<usize>,
+    ) -> Result<Vec<Commit>, CLIError> {
+        let mut args = vec![
             "log".to_string(),
             "--pretty=format:%H|%an|%ae|%s".to_string(),
         ];
+
+        // Pass limit to git to avoid fetching unnecessary commits
+        if let Some(n) = limit {
+            args.push(format!("-n{}", n));
+        }
 
         let mut command = Command::new("git");
 
@@ -45,11 +53,10 @@ impl Commit {
         }
 
         let log_output = String::from_utf8_lossy(&log_command.stdout);
-        let parsed_commit: Vec<&str> = log_output.lines().collect();
-
         let mut commits = Vec::new();
 
-        for line in parsed_commit {
+        // Iterate directly over lines without collecting into intermediate Vec
+        for line in log_output.lines() {
             let parts: Vec<&str> = line.splitn(4, '|').collect();
 
             match parts.as_slice() {
@@ -82,17 +89,9 @@ impl Commit {
         &self.hash[..7]
     }
 
-    pub fn find_short(
-        commits: &[Commit],
-        limit: Option<usize>,
-        threshold: usize,
-    ) -> Vec<(&str, &str)> {
-        let commits_to_check: Box<dyn Iterator<Item = &Commit>> = match limit {
-            Some(n) => Box::new(commits.iter().take(n)),
-            None => Box::new(commits.iter()),
-        };
-
-        commits_to_check
+    pub fn find_short(commits: &[Commit], threshold: usize) -> Vec<(&str, &str)> {
+        commits
+            .iter()
             .filter(|c| c.is_short(threshold))
             .map(|c| (c.short_hash(), c.subject.as_str()))
             .collect()
@@ -290,47 +289,32 @@ mod tests {
         }
 
         #[test]
-        fn finds_short_commits_without_limit() {
+        fn finds_short_commits() {
             let commits = create_test_commits();
-            let short = Commit::find_short(&commits, None, 10);
+            let short = Commit::find_short(&commits, 10);
             assert_eq!(short.len(), 2);
             assert_eq!(short[0].1, "short");
             assert_eq!(short[1].1, "tiny");
         }
 
         #[test]
-        fn respects_limit_parameter() {
-            let commits = create_test_commits();
-            let short = Commit::find_short(&commits, Some(1), 10);
-            assert_eq!(short.len(), 1);
-            assert_eq!(short[0].1, "short");
-        }
-
-        #[test]
         fn returns_empty_when_no_short_commits() {
             let commits = create_test_commits();
-            let short = Commit::find_short(&commits, None, 3);
+            let short = Commit::find_short(&commits, 3);
             assert!(short.is_empty());
         }
 
         #[test]
         fn returns_empty_for_empty_commits_list() {
             let commits: Vec<Commit> = vec![];
-            let short = Commit::find_short(&commits, None, 10);
+            let short = Commit::find_short(&commits, 10);
             assert!(short.is_empty());
-        }
-
-        #[test]
-        fn limit_larger_than_commit_count() {
-            let commits = create_test_commits();
-            let short = Commit::find_short(&commits, Some(100), 10);
-            assert_eq!(short.len(), 2);
         }
 
         #[test]
         fn returns_short_hash_and_subject() {
             let commits = create_test_commits();
-            let short = Commit::find_short(&commits, None, 10);
+            let short = Commit::find_short(&commits, 10);
             assert_eq!(short[0].0, "1111111");
             assert_eq!(short[0].1, "short");
         }
