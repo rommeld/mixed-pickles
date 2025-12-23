@@ -1,0 +1,17 @@
+use std::{io, path::PathBuf};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+#[allow(dead_code)]
+pub enum CLIError {
+    #[error("Path '{0}' is not a git repository")]
+    NotARepository(PathBuf),
+    #[error("Path '{0}' does not exist")]
+    PathNotFound(PathBuf),
+    #[error("Git command failed: {0}")]
+    GitCommandFailed(String),
+    #[error("No commits found in repository")]
+    NoCommitsFound,
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
+}

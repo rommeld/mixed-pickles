@@ -1,10 +1,14 @@
+mod commit;
+mod error;
+
 use clap::Parser;
-use std::{io, path::PathBuf, process::Command};
-use thiserror::Error;
+use std::path::PathBuf;
+
+use commit::{Commit, print_results, validate_repo_path};
+use error::CLIError;
 
 #[derive(Parser, Debug)]
 struct GitCLI {
-    // --path /path/to/repo
     #[arg(long)]
     path: Option<PathBuf>,
     #[arg(short, long)]
@@ -13,128 +17,29 @@ struct GitCLI {
     threshold: usize,
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-struct Commit {
-    hash: String,
-    author_name: String,
-    author_email: String,
-    subject: String,
-}
-
-#[derive(Error, Debug)]
-pub enum CLIError {
-    #[error("Path '{0}' is not a git repository")]
-    NotARepository(PathBuf),
-    #[error("Path '{0}' does not exist")]
-    PathNotFound(PathBuf),
-    #[error("Git command failed: {0}")]
-    GitCommandFailed(String),
-    #[error("No commits found in repository")]
-    NoCommitsFound,
-    #[error("IO error: {0}")]
-    IoError(#[from] io::Error),
-}
-
 fn main() -> Result<(), CLIError> {
     let git_cli = GitCLI::parse();
 
     // Validate path if provided
-    let repo_path = if let Some(path) = &git_cli.path {
-        if !path.exists() {
-            return Err(CLIError::PathNotFound(path.clone()));
-        }
-        if !path.join(".git").exists() {
-            return Err(CLIError::NotARepository(path.clone()));
-        }
-        Some(path)
-    } else {
-        None
-    };
-
-    let args: Vec<String> = vec![
-        "log".to_string(),
-        "--pretty=format:%H|%an|%ae|%s".to_string(),
-    ];
-
-    let mut command = Command::new("git");
-
-    if let Some(path) = repo_path {
-        command.current_dir(path);
+    if let Some(path) = &git_cli.path {
+        validate_repo_path(path)?;
     }
 
-    let log_command = command.args(&args).output()?;
+    // Fetch commits
+    let commits = Commit::fetch_all(git_cli.path.as_ref())?;
 
-    if !log_command.status.success() {
-        let stderr = String::from_utf8_lossy(&log_command.stderr);
-        return Err(CLIError::GitCommandFailed(stderr.trim().to_string()));
-    }
+    // Find short commits
+    let short_commits = Commit::find_short(&commits, git_cli.limit, git_cli.threshold);
 
-    let log_output = String::from_utf8_lossy(&log_command.stdout);
-
-    let parsed_commit: Vec<&str> = log_output.lines().collect();
-
-    let mut commit_vec = Vec::new();
-
-    for commit_message in parsed_commit
-        .into_iter()
-        .map(|pipe_character| pipe_character.splitn(4, "|"))
-    {
-        let mut log_vector = Vec::new();
-
-        for i in commit_message {
-            log_vector.push(i)
-        }
-
-        if log_vector.len() == 4 {
-            let commit = Commit {
-                hash: log_vector[0].to_string(),
-                author_name: log_vector[1].to_string(),
-                author_email: log_vector[2].to_string(),
-                subject: log_vector[3].to_string(),
-            };
-            commit_vec.push(commit);
-        } else {
-            println!("Log couldn't be loaded.")
-        };
-    }
-
-    let mut improved_hash_output = Vec::new();
-    let mut improved_subject_output = Vec::new();
-    // Check for subject length
-    let commits_to_check: Box<dyn Iterator<Item = &Commit>> = match git_cli.limit {
-        Some(limit) => Box::new(commit_vec.iter().take(limit)),
-        None => Box::new(commit_vec.iter()),
-    };
-
-    for v in commits_to_check {
-        // TODO: Check for suffix 'feat', 'fix', 'refact', and 'doc'
-        if v.subject.len() <= git_cli.threshold {
-            improved_hash_output.push(&v.hash[..7]);
-            improved_subject_output.push(&v.subject);
-        }
-    }
-
-    if improved_hash_output.is_empty() {
-        println!("Commit messages are adequately executed.");
-    } else {
-        let analyzed_count = git_cli.limit.unwrap_or(commit_vec.len());
-        println!(
-            "Analyzed {} commits on path {:?}\n",
-            analyzed_count, &git_cli.path
-        );
-        println!(
-            "Found {} commits with short messages (< {} chars):",
-            improved_hash_output.len(),
-            &git_cli.threshold
-        );
-        for (hash, subject) in improved_hash_output
-            .iter()
-            .zip(improved_subject_output.iter())
-        {
-            println!("  {}: \"{}\"", hash, subject);
-        }
-    }
+    // Print results
+    let analyzed_count = git_cli.limit.unwrap_or(commits.len());
+    print_results(
+        &short_commits,
+        commits.len(),
+        analyzed_count,
+        git_cli.threshold,
+        &git_cli.path,
+    );
 
     Ok(())
 }

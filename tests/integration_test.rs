@@ -84,7 +84,7 @@ mod cli_tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.contains("Analyzed") {
             assert!(
-                stdout.contains("Analyzed 5 commits"),
+                stdout.contains("Analyzed 5 of"),
                 "Should analyze exactly 5 commits, got: {}",
                 stdout
             );
@@ -115,7 +115,7 @@ mod cli_tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.contains("Analyzed") {
             assert!(
-                stdout.contains("Analyzed 10 commits"),
+                stdout.contains("Analyzed 10 of"),
                 "Should analyze 10 commits, got: {}",
                 stdout
             );
@@ -141,7 +141,7 @@ mod cli_tests {
         let stdout = String::from_utf8_lossy(&output.stdout);
         // Either shows analyzed count or "adequately executed" message
         assert!(
-            stdout.contains("Analyzed 3 commits") || stdout.contains("adequately executed"),
+            stdout.contains("Analyzed 3 of") || stdout.contains("adequately executed"),
             "Should analyze 3 commits or show success message, got: {}",
             stdout
         );
