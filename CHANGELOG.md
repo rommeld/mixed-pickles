@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- reduce number of validated commits to cli --limit (6bec626)
+
 ## [0.2.1] - 2025-12-23
 
 ### Fixed
