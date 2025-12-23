@@ -15,7 +15,6 @@ pub struct Commit {
 }
 
 impl Commit {
-    /// Fetches commits from the git repository at the given path
     pub fn fetch_all(repo_path: Option<&PathBuf>) -> Result<Vec<Commit>, CLIError> {
         let args: Vec<String> = vec![
             "log".to_string(),
@@ -59,17 +58,14 @@ impl Commit {
         Ok(commits)
     }
 
-    /// Check if this commit has a short subject
     pub fn is_short(&self, threshold: usize) -> bool {
         self.subject.len() <= threshold
     }
 
-    /// Get short hash (7 chars)
     pub fn short_hash(&self) -> &str {
         &self.hash[..7]
     }
 
-    /// Finds commits with short subject lines
     pub fn find_short(
         commits: &[Commit],
         limit: Option<usize>,
@@ -87,7 +83,6 @@ impl Commit {
     }
 }
 
-/// Validates that the given path exists and is a git repository
 pub fn validate_repo_path(path: &Path) -> Result<(), CLIError> {
     if !path.exists() {
         return Err(CLIError::PathNotFound(path.to_path_buf()));
@@ -98,7 +93,6 @@ pub fn validate_repo_path(path: &Path) -> Result<(), CLIError> {
     Ok(())
 }
 
-/// Prints the analysis results
 pub fn print_results(
     short_commits: &[(&str, &str)],
     total_commits: usize,
