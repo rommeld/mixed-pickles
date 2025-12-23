@@ -1,3 +1,4 @@
+//! Error handling for the mixed-pickles CLI
 use std::{io, path::PathBuf};
 use thiserror::Error;
 

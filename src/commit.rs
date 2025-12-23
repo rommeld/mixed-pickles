@@ -1,3 +1,4 @@
+//! Commit parsing and validationuse regex::Regex;
 use regex::Regex;
 use std::{
     path::{Path, PathBuf},
@@ -18,9 +19,9 @@ fn is_valid_git_hash(hash: &str) -> bool {
 #[allow(dead_code)]
 pub struct Commit {
     pub hash: String,
-    pub author_name: String,
-    pub author_email: String,
-    pub subject: String,
+    author_name: String,
+    author_email: String,
+    subject: String,
 }
 
 impl Commit {
@@ -73,11 +74,11 @@ impl Commit {
         Ok(commits)
     }
 
-    pub fn is_short(&self, threshold: usize) -> bool {
+    fn is_short(&self, threshold: usize) -> bool {
         self.subject.len() <= threshold
     }
 
-    pub fn short_hash(&self) -> &str {
+    fn short_hash(&self) -> &str {
         &self.hash[..7]
     }
 
@@ -108,14 +109,14 @@ pub fn validate_repo_path(path: &Path) -> Result<(), CLIError> {
     Ok(())
 }
 
-pub enum CommitMessageStatus {
+enum CommitMessageStatus {
     NeedsWork,
     Acceptable,
     Empty,
 }
 
 impl CommitMessageStatus {
-    pub fn from_short_commits(short_commits: &[(&str, &str)], total_commits: usize) -> Self {
+    fn from_short_commits(short_commits: &[(&str, &str)], total_commits: usize) -> Self {
         if total_commits == 0 {
             CommitMessageStatus::Empty
         } else if short_commits.is_empty() {
