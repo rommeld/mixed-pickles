@@ -1,9 +1,18 @@
+use regex::Regex;
 use std::{
     path::{Path, PathBuf},
     process::Command,
+    sync::LazyLock,
 };
 
 use crate::error::CLIError;
+
+static GIT_HASH_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[0-9a-f]{40}$").expect("Invalid regex pattern"));
+
+fn is_valid_git_hash(hash: &str) -> bool {
+    GIT_HASH_REGEX.is_match(hash)
+}
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -39,19 +48,25 @@ impl Commit {
 
         let mut commits = Vec::new();
 
-        for commit_message in parsed_commit.into_iter().map(|line| line.splitn(4, "|")) {
-            let parts: Vec<&str> = commit_message.collect();
+        for line in parsed_commit {
+            let parts: Vec<&str> = line.splitn(4, '|').collect();
 
-            if parts.len() == 4 {
-                let commit = Commit {
-                    hash: parts[0].to_string(),
-                    author_name: parts[1].to_string(),
-                    author_email: parts[2].to_string(),
-                    subject: parts[3].to_string(),
-                };
-                commits.push(commit);
-            } else {
-                eprintln!("Warning: Could not parse commit line");
+            match parts.as_slice() {
+                [hash, author_name, author_email, subject] if is_valid_git_hash(hash) => {
+                    let commit = Commit {
+                        hash: hash.to_string(),
+                        author_name: author_name.to_string(),
+                        author_email: author_email.to_string(),
+                        subject: subject.to_string(),
+                    };
+                    commits.push(commit);
+                }
+                [hash, _, _, _] => {
+                    eprintln!("Warning: Invalid git hash format: {}", hash);
+                }
+                _ => {
+                    eprintln!("Warning: Could not parse commit line");
+                }
             }
         }
 
@@ -93,6 +108,24 @@ pub fn validate_repo_path(path: &Path) -> Result<(), CLIError> {
     Ok(())
 }
 
+pub enum CommitMessageStatus {
+    NeedsWork,
+    Acceptable,
+    Empty,
+}
+
+impl CommitMessageStatus {
+    pub fn from_short_commits(short_commits: &[(&str, &str)], total_commits: usize) -> Self {
+        if total_commits == 0 {
+            CommitMessageStatus::Empty
+        } else if short_commits.is_empty() {
+            CommitMessageStatus::Acceptable
+        } else {
+            CommitMessageStatus::NeedsWork
+        }
+    }
+}
+
 pub fn print_results(
     short_commits: &[(&str, &str)],
     total_commits: usize,
@@ -100,20 +133,28 @@ pub fn print_results(
     threshold: usize,
     path: &Option<PathBuf>,
 ) {
-    if short_commits.is_empty() {
-        println!("Commit messages are adequately executed.");
-    } else {
-        println!(
-            "Analyzed {} of {} total commits on path {:?}\n",
-            analyzed_count, total_commits, path
-        );
-        println!(
-            "Found {} commits with short messages (< {} chars):",
-            short_commits.len(),
-            threshold
-        );
-        for (hash, subject) in short_commits {
-            println!("  {}: \"{}\"", hash, subject);
+    let status = CommitMessageStatus::from_short_commits(short_commits, total_commits);
+
+    match status {
+        CommitMessageStatus::Empty => {
+            println!("No commits found in repository.");
+        }
+        CommitMessageStatus::Acceptable => {
+            println!("Commit messages are adequately executed.");
+        }
+        CommitMessageStatus::NeedsWork => {
+            println!(
+                "Analyzed {} of {} total commits on path {:?}\n",
+                analyzed_count, total_commits, path
+            );
+            println!(
+                "Found {} commits with short messages (< {} chars):",
+                short_commits.len(),
+                threshold
+            );
+            for (hash, subject) in short_commits {
+                println!("  {}: \"{}\"", hash, subject);
+            }
         }
     }
 }
