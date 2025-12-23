@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- delete  reference in functions and types (5dcf168)
+
 ### Added
 
 - add validation for creating Commit struct from git log (4cd9f9d)
