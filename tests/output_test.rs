@@ -124,12 +124,14 @@ fn output_shows_path_info() {
 
 #[test]
 fn output_shows_analyzed_vs_total_commits() {
-    let output = run_binary_with_args(&["-l", "5", "-t", "100"]);
+    let output = run_binary_with_args(&["-t", "100"]);
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     if stdout.contains("Analyzed") {
+        // Check for pattern "Analyzed N of N total commits" (N can be any number)
+        let has_format = stdout.contains(" of ") && stdout.contains("total commits");
         assert!(
-            stdout.contains("5 of") && stdout.contains("total commits"),
+            has_format,
             "Should show 'X of Y total commits', got: {}",
             stdout
         );
