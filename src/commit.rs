@@ -34,7 +34,6 @@ impl Commit {
             "--pretty=format:%H|%an|%ae|%s".to_string(),
         ];
 
-        // Pass limit to git to avoid fetching unnecessary commits
         if let Some(n) = limit {
             args.push(format!("-n{}", n));
         }
@@ -55,7 +54,6 @@ impl Commit {
         let log_output = String::from_utf8_lossy(&log_command.stdout);
         let mut commits = Vec::new();
 
-        // Iterate directly over lines without collecting into intermediate Vec
         for line in log_output.lines() {
             let parts: Vec<&str> = line.splitn(4, '|').collect();
 

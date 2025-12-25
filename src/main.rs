@@ -15,6 +15,7 @@ struct GitCLI {
     limit: Option<usize>,
     #[arg(short, long, default_value_t = 30)]
     threshold: usize,
+    // TODO: Add a new argument to specify release type (release)
 }
 
 fn main() -> Result<(), CLIError> {
@@ -24,12 +25,10 @@ fn main() -> Result<(), CLIError> {
         validate_repo_path(path)?;
     }
 
-    // Pass limit to git to only fetch needed commits
     let commits = Commit::fetch_all(git_cli.path.as_ref(), git_cli.limit)?;
 
     let short_commits = Commit::find_short(&commits, git_cli.threshold);
 
-    // analyzed_count equals commits.len() since limit is applied at fetch time
     let analyzed_count = commits.len();
     print_results(
         &short_commits,
