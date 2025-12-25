@@ -1,9 +1,23 @@
-#[pyo3::pymodule]
-mod mixed_pickles {
-    use pyo3::prelude::*;
+use pyo3::prelude::*;
 
-    #[pyfunction]
-    fn check_commits() {
-        todo!("Migrate commit.rs and error.rs references from 'main.rs'");
+#[pyclass]
+struct Commit(String);
+
+#[pymethods]
+impl Commit {
+    #[new]
+    fn new(hash: String) -> Self {
+        Commit(hash)
     }
+
+    #[getter]
+    fn hash(&self) -> &str {
+        &self.0
+    }
+}
+
+#[pymodule]
+fn mixed_pickles(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<Commit>()?;
+    Ok(())
 }
