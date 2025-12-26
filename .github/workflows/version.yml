@@ -9,19 +9,43 @@ jobs:
   changelog:
     name: Update Changelog
     runs-on: ubuntu-latest
-    # Skip if commit is from automation or has [skip ci]
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore: bump version') && !contains(github.event.head_commit.message, 'chore: update changelog')"
+    # Only run if CI succeeded
+    if: github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get commit message
+        id: get-commit
+        run: |
+          COMMIT_MSG=$(git log -1 --format=%B)
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          COMMIT_SHA=$(git log -1 --format=%H)
+          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Check if should skip
+        id: should-skip
+        run: |
+          COMMIT_MSG="${{ steps.get-commit.outputs.message }}"
+          if echo "$COMMIT_MSG" | grep -qE '\[skip ci\]|chore: bump version|chore: update changelog'; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Skipping: automated commit detected"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Determine change type
         id: change-type
+        if: steps.should-skip.outputs.skip != 'true'
         run: |
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_MSG="${{ steps.get-commit.outputs.message }}"
           FIRST_LINE=$(echo "$COMMIT_MSG" | head -n 1)
           if [[ "$FIRST_LINE" =~ ^feat(\(.+\))?:|^feat: ]]; then
             echo "type=Added" >> $GITHUB_OUTPUT
@@ -48,13 +72,13 @@ jobs:
           fi
 
       - name: Update CHANGELOG.md
-        if: steps.change-type.outputs.type != 'none'
+        if: steps.should-skip.outputs.skip != 'true' && steps.change-type.outputs.type != 'none'
         run: |
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_MSG="${{ steps.get-commit.outputs.message }}"
           FIRST_LINE=$(echo "$COMMIT_MSG" | head -n 1)
           CHANGE_TYPE="${{ steps.change-type.outputs.type }}"
           IS_BREAKING="${{ steps.change-type.outputs.is_breaking }}"
-          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_SHA="${{ steps.get-commit.outputs.sha }}"
           SHORT_SHA="${COMMIT_SHA:0:7}"
 
           # Extract the description from commit message (remove prefix)
@@ -145,7 +169,7 @@ jobs:
           fi
 
       - name: Commit changelog update
-        if: steps.change-type.outputs.type != 'none'
+        if: steps.should-skip.outputs.skip != 'true' && steps.change-type.outputs.type != 'none'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
