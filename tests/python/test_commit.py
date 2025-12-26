@@ -47,11 +47,6 @@ class TestCommit:
         assert len(commit.hash) == 40
         assert all(c in "0123456789abcdef" for c in commit.hash)
 
-    def test_commit_has_short_hash(self, commit):
-        """Commit should have a 7-character short hash."""
-        assert len(commit.short_hash) == 7
-        assert commit.short_hash == commit.hash[:7]
-
     def test_commit_has_author_name(self, commit):
         """Commit should have an author name."""
         assert isinstance(commit.author_name, str)
@@ -65,16 +60,3 @@ class TestCommit:
     def test_commit_has_subject(self, commit):
         """Commit should have a subject."""
         assert isinstance(commit.subject, str)
-
-    def test_commit_is_short_method(self, commit):
-        """is_short method should work correctly."""
-        # With threshold of 0, no commit is short
-        assert not commit.is_short(0)
-        # With very high threshold, all commits are short
-        assert commit.is_short(10000)
-
-    def test_commit_repr(self, commit):
-        """Commit should have a nice repr."""
-        repr_str = repr(commit)
-        assert commit.short_hash in repr_str
-        assert "Commit(" in repr_str

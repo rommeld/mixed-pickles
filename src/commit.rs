@@ -34,12 +34,6 @@ impl Commit {
         &self.hash
     }
 
-    /// The shortened 7-character commit hash.
-    #[getter]
-    fn short_hash(&self) -> &str {
-        &self.hash[..7]
-    }
-
     /// The commit author's name.
     #[getter]
     fn author_name(&self) -> &str {
@@ -61,10 +55,6 @@ impl Commit {
     /// Check if this commit's subject is shorter than the threshold.
     fn is_short(&self, threshold: usize) -> bool {
         self.subject.len() <= threshold
-    }
-
-    fn __repr__(&self) -> String {
-        format!("Commit({}: \"{}\")", self.short_hash(), self.subject)
     }
 }
 
@@ -127,7 +117,7 @@ impl Commit {
         commits
             .iter()
             .filter(|c| c.is_short(threshold))
-            .map(|c| (c.short_hash(), c.subject.as_str()))
+            .map(|c| (c.hash(), c.subject.as_str()))
             .collect()
     }
 
@@ -293,12 +283,6 @@ mod tests {
                 create_test_commit("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", "1234567890");
             assert!(commit.is_short(10));
         }
-
-        #[test]
-        fn short_hash_returns_first_seven_chars() {
-            let commit = create_test_commit("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", "test");
-            assert_eq!(commit.short_hash(), "a1b2c3d");
-        }
     }
 
     mod find_short {
@@ -348,14 +332,6 @@ mod tests {
             let commits: Vec<Commit> = vec![];
             let short = Commit::find_short(&commits, 10);
             assert!(short.is_empty());
-        }
-
-        #[test]
-        fn returns_short_hash_and_subject() {
-            let commits = create_test_commits();
-            let short = Commit::find_short(&commits, 10);
-            assert_eq!(short[0].0, "1111111");
-            assert_eq!(short[0].1, "short");
         }
     }
 

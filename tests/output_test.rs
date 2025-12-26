@@ -148,27 +148,3 @@ fn output_shows_analyzed_vs_total_commits() {
         stdout
     );
 }
-
-#[test]
-fn commit_hash_is_seven_characters() {
-    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
-    assert!(
-        !output.status.success(),
-        "Should exit non-zero when short commits found"
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    for line in stdout.lines() {
-        if line.starts_with("  ") && line.contains(": \"") {
-            // Extract hash (format: "  abc1234: \"subject\"")
-            let hash = line.trim().split(':').next().unwrap();
-            assert_eq!(
-                hash.len(),
-                7,
-                "Hash should be 7 characters, got: {} ({})",
-                hash,
-                hash.len()
-            );
-        }
-    }
-}
