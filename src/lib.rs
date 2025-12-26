@@ -84,7 +84,7 @@ fn main() {
             "--help" | "-h" => {
                 println!("Usage: mixed-pickles [OPTIONS]");
                 println!();
-                println!("Analyze git commits and find those with short messages.");
+                println!("Analyze git commits.");
                 println!();
                 println!("Options:");
                 println!(
