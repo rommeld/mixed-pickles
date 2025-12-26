@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- update README.md and delete all descriptions (95a765f)
+
 ## [0.3.0] - 2025-12-26
 
 ### Added
