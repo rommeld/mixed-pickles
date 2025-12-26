@@ -4,8 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "mixed-pickles"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dynamic = ["version"]
+
+[project.scripts]
+mixed-pickles = "mixed_pickles:main"
 
 [tool.maturin]
 module-name = "mixed_pickles"
