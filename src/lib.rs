@@ -3,9 +3,36 @@ pub mod error;
 
 use std::path::PathBuf;
 
+use clap::Parser;
 use commit::{Commit, print_results, validate_repo_path};
 use error::CLIError;
 use pyo3::prelude::*;
+
+/// CLI arguments for the commit analyzer.
+#[derive(Parser, Debug)]
+#[command(name = "mixed-pickles")]
+#[command(about = "Analyze git commits and find those with short messages")]
+pub struct GitCLI {
+    /// Path to the git repository
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+    /// Maximum number of commits to analyze
+    #[arg(short, long)]
+    pub limit: Option<usize>,
+    /// Minimum message length in characters
+    #[arg(short, long, default_value_t = 30)]
+    pub threshold: usize,
+    /// Suppress output unless issues found
+    #[arg(short, long)]
+    pub quiet: bool,
+}
+
+impl GitCLI {
+    /// Run the commit analyzer with these CLI arguments.
+    pub fn run(&self) -> Result<(), CLIError> {
+        commit_analyzer(self.path.as_ref(), self.limit, self.threshold, self.quiet)
+    }
+}
 
 pub fn commit_analyzer(
     path: Option<&PathBuf>,
@@ -70,64 +97,24 @@ fn analyze_commits(
 /// This function is called when running `mixed-pickles` from the command line.
 /// Exits with code 1 if short commits are found, 0 otherwise.
 #[pyfunction]
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
+fn main(py: Python<'_>) {
+    // Get sys.argv from Python for correct argument parsing
+    let sys = py.import("sys").expect("Failed to import sys");
+    let argv: Vec<String> = sys
+        .getattr("argv")
+        .expect("Failed to get argv")
+        .extract()
+        .expect("Failed to extract argv");
 
-    let mut path: Option<String> = None;
-    let mut limit: Option<usize> = None;
-    let mut threshold: usize = 30;
-    let mut quiet: bool = false;
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--help" | "-h" => {
-                println!("Usage: mixed-pickles [OPTIONS]");
-                println!();
-                println!("Analyze git commits.");
-                println!();
-                println!("Options:");
-                println!(
-                    "  --path <PATH>        Path to the git repository (default: current directory)"
-                );
-                println!(
-                    "  -l, --limit <N>      Maximum number of commits to analyze (default: all)"
-                );
-                println!(
-                    "  -t, --threshold <N>  Minimum message length in characters (default: 30)"
-                );
-                println!("  -q, --quiet          Suppress output unless issues found");
-                println!("  -h, --help           Show this help message");
-                return;
-            }
-            "--path" => {
-                i += 1;
-                if i < args.len() {
-                    path = Some(args[i].clone());
-                }
-            }
-            "-l" | "--limit" => {
-                i += 1;
-                if i < args.len() {
-                    limit = args[i].parse().ok();
-                }
-            }
-            "-t" | "--threshold" => {
-                i += 1;
-                if i < args.len() {
-                    threshold = args[i].parse().unwrap_or(30);
-                }
-            }
-            "-q" | "--quiet" => {
-                quiet = true;
-            }
-            _ => {}
+    let cli = match GitCLI::try_parse_from(&argv) {
+        Ok(cli) => cli,
+        Err(e) => {
+            // clap handles --help and --version by "failing" with a special error
+            e.exit();
         }
-        i += 1;
-    }
+    };
 
-    let path_buf = path.map(PathBuf::from);
-    match commit_analyzer(path_buf.as_ref(), limit, threshold, quiet) {
+    match cli.run() {
         Ok(()) => {}
         Err(CLIError::ShortCommitsFound(_)) => {
             std::process::exit(1);
