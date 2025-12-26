@@ -5,11 +5,13 @@ mod common;
 use common::{run_binary, run_binary_with_args};
 
 #[test]
-fn binary_runs_successfully() {
+fn binary_runs_and_produces_output() {
     let output = run_binary();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Binary runs and produces some output (may exit 0 or 1 depending on commits)
     assert!(
-        output.status.success(),
-        "Binary should exit with success status"
+        !stdout.is_empty() || output.status.success(),
+        "Binary should produce output or succeed"
     );
 }
 
@@ -48,7 +50,10 @@ fn output_format_lists_commits_with_indentation() {
 fn acceptable_status_shows_success_message() {
     // With a very low threshold, all commits should pass
     let output = run_binary_with_args(&["-t", "0"]);
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "Should exit 0 when no short commits"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("adequately executed"),
@@ -60,88 +65,97 @@ fn acceptable_status_shows_success_message() {
 #[test]
 fn needs_work_status_shows_analysis() {
     // With a high threshold, some commits should be flagged
-    let output = run_binary_with_args(&["-t", "100"]);
-    assert!(output.status.success());
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    // Now exits non-zero when short commits found
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero when short commits found"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.contains("short messages") {
-        assert!(
-            stdout.contains("Analyzed") && stdout.contains("total commits"),
-            "Should show analysis header, got: {}",
-            stdout
-        );
-        assert!(
-            stdout.contains("Found") && stdout.contains("commits with short messages"),
-            "Should show count of short commits, got: {}",
-            stdout
-        );
-    }
+    assert!(
+        stdout.contains("Analyzed") && stdout.contains("total commits"),
+        "Should show analysis header, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Found") && stdout.contains("commits with short messages"),
+        "Should show count of short commits, got: {}",
+        stdout
+    );
 }
 
 #[test]
 fn needs_work_status_shows_commit_list() {
-    let output = run_binary_with_args(&["-t", "100"]);
-    assert!(output.status.success());
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero when short commits found"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.contains("short messages") {
-        let has_commit_format = stdout
-            .lines()
-            .any(|line| line.starts_with("  ") && line.contains(": \"") && line.ends_with("\""));
-        assert!(
-            has_commit_format,
-            "Should list commits in format '  hash: \"subject\"', got: {}",
-            stdout
-        );
-    }
+    let has_commit_format = stdout
+        .lines()
+        .any(|line| line.starts_with("  ") && line.contains(": \"") && line.ends_with('"'));
+    assert!(
+        has_commit_format,
+        "Should list commits in format '  hash: \"subject\"', got: {}",
+        stdout
+    );
 }
 
 #[test]
 fn output_shows_threshold_value() {
-    let output = run_binary_with_args(&["-t", "75"]);
-    assert!(output.status.success());
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero when short commits found"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.contains("short messages") {
-        assert!(
-            stdout.contains("< 75 chars"),
-            "Should show the threshold value in output, got: {}",
-            stdout
-        );
-    }
+    assert!(
+        stdout.contains("< 1000 chars"),
+        "Should show the threshold value in output, got: {}",
+        stdout
+    );
 }
 
 #[test]
 fn output_shows_path_info() {
-    let output = run_binary_with_args(&["--path", ".", "-t", "100"]);
-    assert!(output.status.success());
+    let output = run_binary_with_args(&["--path", ".", "-t", "1000", "-l", "5"]);
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero when short commits found"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.contains("Analyzed") {
-        assert!(
-            stdout.contains("on path"),
-            "Should show path info in output, got: {}",
-            stdout
-        );
-    }
+    assert!(
+        stdout.contains("on path"),
+        "Should show path info in output, got: {}",
+        stdout
+    );
 }
 
 #[test]
 fn output_shows_analyzed_vs_total_commits() {
-    let output = run_binary_with_args(&["-t", "100"]);
-    assert!(output.status.success());
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero when short commits found"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.contains("Analyzed") {
-        // Check for pattern "Analyzed N of N total commits" (N can be any number)
-        let has_format = stdout.contains(" of ") && stdout.contains("total commits");
-        assert!(
-            has_format,
-            "Should show 'X of Y total commits', got: {}",
-            stdout
-        );
-    }
+    // Check for pattern "Analyzed N of N total commits" (N can be any number)
+    let has_format = stdout.contains(" of ") && stdout.contains("total commits");
+    assert!(
+        has_format,
+        "Should show 'X of Y total commits', got: {}",
+        stdout
+    );
 }
 
 #[test]
 fn commit_hash_is_seven_characters() {
-    let output = run_binary_with_args(&["-t", "100"]);
-    assert!(output.status.success());
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero when short commits found"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     for line in stdout.lines() {

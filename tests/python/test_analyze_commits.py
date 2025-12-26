@@ -5,38 +5,36 @@ import pytest
 class TestAnalyzeCommits:
     """Tests for the analyze_commits function."""
 
-    def test_default_arguments(self):
-        """Should succeed with default arguments on current repo."""
-        # Should not raise any exception
-        mixed_pickles.analyze_commits()
-
-    def test_with_explicit_path(self):
-        """Should succeed with explicit path to current repo."""
-        mixed_pickles.analyze_commits(path=".")
-
-    def test_with_limit(self):
-        """Should succeed with limit argument."""
-        mixed_pickles.analyze_commits(limit=5)
-
-    def test_with_threshold(self):
-        """Should succeed with custom threshold."""
-        mixed_pickles.analyze_commits(threshold=50)
-
-    def test_with_all_arguments(self):
-        """Should succeed with all arguments specified."""
-        mixed_pickles.analyze_commits(path=".", limit=10, threshold=25)
-
-    def test_limit_zero(self):
-        """Should handle limit of zero."""
-        mixed_pickles.analyze_commits(limit=0)
-
-    def test_threshold_zero(self):
-        """Should handle threshold of zero."""
+    def test_no_short_commits_with_low_threshold(self):
+        """Should succeed when no commits are below threshold."""
+        # With threshold=0, no commits should be "short"
         mixed_pickles.analyze_commits(threshold=0)
 
-    def test_large_threshold(self):
-        """Should handle large threshold value."""
-        mixed_pickles.analyze_commits(threshold=1000)
+    def test_no_short_commits_with_low_threshold_and_path(self):
+        """Should succeed with explicit path when no short commits."""
+        mixed_pickles.analyze_commits(path=".", threshold=0)
+
+    def test_quiet_mode_no_issues(self):
+        """Should succeed silently when no issues and quiet=True."""
+        mixed_pickles.analyze_commits(threshold=0, quiet=True)
+
+    def test_limit_zero(self):
+        """Should handle limit of zero (no commits analyzed)."""
+        mixed_pickles.analyze_commits(limit=0)
+
+    def test_raises_when_short_commits_found(self):
+        """Should raise RuntimeError when short commits are found."""
+        with pytest.raises(RuntimeError, match="short messages"):
+            mixed_pickles.analyze_commits(threshold=1000)
+
+    def test_raises_with_quiet_when_issues_found(self):
+        """Should still raise even in quiet mode when issues found."""
+        with pytest.raises(RuntimeError, match="short messages"):
+            mixed_pickles.analyze_commits(threshold=1000, quiet=True)
+
+    def test_with_limit_and_threshold(self):
+        """Should work with limit and low threshold."""
+        mixed_pickles.analyze_commits(limit=5, threshold=0)
 
 
 class TestAnalyzeCommitsErrors:
