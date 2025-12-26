@@ -182,4 +182,5 @@ jobs:
 
           git add CHANGELOG.md
           git commit -m "chore: update changelog [skip ci]"
-          git push
+          # Push to main branch (we're in detached HEAD from workflow_run)
+          git push origin HEAD:main
