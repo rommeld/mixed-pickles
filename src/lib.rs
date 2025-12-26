@@ -31,6 +31,12 @@ pub fn commit_analyzer(
     Ok(())
 }
 
+/// Analyze commits and find those which do not match pre-defined features
+///
+/// Args:
+///     path(str): Path to the repository (default: current directory)
+///     limit(int): Number of commits to analyze (default: all)
+///     threshold(int): Number of characters in a commit message (default: 30)
 #[pyfunction]
 #[pyo3(signature = (path=None, limit=None, threshold=30))]
 fn analyze_commits(path: Option<String>, limit: Option<usize>, threshold: usize) -> PyResult<()> {
