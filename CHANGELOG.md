@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- expose 'Commit' struct (b429346)
 - add pyfunction 'analyze_commit' for Python integration (42bb51d)
 
 ## [0.2.2] - 2025-12-23
