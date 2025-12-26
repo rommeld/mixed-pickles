@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- add pyfunction 'analyze_commit' for Python integration (42bb51d)
+
 ## [0.2.2] - 2025-12-23
 
 ### Changed
