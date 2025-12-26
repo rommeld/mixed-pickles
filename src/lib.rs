@@ -11,6 +11,7 @@ pub fn commit_analyzer(
     path: Option<&PathBuf>,
     limit: Option<usize>,
     threshold: usize,
+    quiet: bool,
 ) -> Result<(), CLIError> {
     if let Some(p) = path {
         validate_repo_path(p)?;
@@ -20,28 +21,46 @@ pub fn commit_analyzer(
     let short_commits = Commit::find_short(&commits, threshold);
     let analyzed_count = commits.len();
 
-    print_results(
-        &short_commits,
-        commits.len(),
-        analyzed_count,
-        threshold,
-        &path.cloned(),
-    );
+    if !quiet || !short_commits.is_empty() {
+        print_results(
+            &short_commits,
+            commits.len(),
+            analyzed_count,
+            threshold,
+            &path.cloned(),
+        );
+    }
 
-    Ok(())
+    if short_commits.is_empty() {
+        Ok(())
+    } else {
+        Err(CLIError::ShortCommitsFound(short_commits.len()))
+    }
 }
 
-/// Analyze commits and find those which do not match pre-defined features
+/// Analyze commits and find those which do not match pre-defined features.
 ///
 /// Args:
-///     path(str): Path to the repository (default: current directory)
-///     limit(int): Number of commits to analyze (default: all)
-///     threshold(int): Number of characters in a commit message (default: 30)
+///     path: Path to the repository (default: current directory)
+///     limit: Number of commits to analyze (default: all)
+///     threshold: Minimum message length in characters (default: 30)
+///     quiet: Suppress output unless issues found (default: False)
+///
+/// Returns:
+///     None on success
+///
+/// Raises:
+///     RuntimeError: If short commits are found or other errors occur
 #[pyfunction]
-#[pyo3(signature = (path=None, limit=None, threshold=30))]
-fn analyze_commits(path: Option<String>, limit: Option<usize>, threshold: usize) -> PyResult<()> {
+#[pyo3(signature = (path=None, limit=None, threshold=30, quiet=false))]
+fn analyze_commits(
+    path: Option<String>,
+    limit: Option<usize>,
+    threshold: usize,
+    quiet: bool,
+) -> PyResult<()> {
     let path_buf = path.map(PathBuf::from);
-    commit_analyzer(path_buf.as_ref(), limit, threshold)
+    commit_analyzer(path_buf.as_ref(), limit, threshold, quiet)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
@@ -49,13 +68,15 @@ fn analyze_commits(path: Option<String>, limit: Option<usize>, threshold: usize)
 ///
 /// Parses command-line arguments and runs the analysis.
 /// This function is called when running `mixed-pickles` from the command line.
+/// Exits with code 1 if short commits are found, 0 otherwise.
 #[pyfunction]
-fn main() -> PyResult<()> {
+fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     let mut path: Option<String> = None;
     let mut limit: Option<usize> = None;
     let mut threshold: usize = 30;
+    let mut quiet: bool = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -75,8 +96,9 @@ fn main() -> PyResult<()> {
                 println!(
                     "  -t, --threshold <N>  Minimum message length in characters (default: 30)"
                 );
+                println!("  -q, --quiet          Suppress output unless issues found");
                 println!("  -h, --help           Show this help message");
-                return Ok(());
+                return;
             }
             "--path" => {
                 i += 1;
@@ -96,12 +118,25 @@ fn main() -> PyResult<()> {
                     threshold = args[i].parse().unwrap_or(30);
                 }
             }
+            "-q" | "--quiet" => {
+                quiet = true;
+            }
             _ => {}
         }
         i += 1;
     }
 
-    analyze_commits(path, limit, threshold)
+    let path_buf = path.map(PathBuf::from);
+    match commit_analyzer(path_buf.as_ref(), limit, threshold, quiet) {
+        Ok(()) => {}
+        Err(CLIError::ShortCommitsFound(_)) => {
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 #[pymodule]
