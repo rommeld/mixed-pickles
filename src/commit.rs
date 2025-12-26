@@ -94,6 +94,11 @@ impl Commit {
             .map(|c| (c.short_hash(), c.subject.as_str()))
             .collect()
     }
+
+    #[allow(unused)]
+    fn semantic_commit_validation() {
+        todo!()
+    }
 }
 
 pub fn validate_repo_path(path: &Path) -> Result<(), CLIError> {
