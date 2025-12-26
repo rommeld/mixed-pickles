@@ -5,6 +5,10 @@ build-backend = "maturin"
 [project]
 name = "mixed-pickles"
 requires-python = ">=3.8"
+dynamic = ["version"]
+
+[tool.maturin]
+module-name = "mixed_pickles"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "maturin>=1.0,<2.0"]
