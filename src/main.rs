@@ -11,13 +11,19 @@ struct GitCLI {
     limit: Option<usize>,
     #[arg(short, long, default_value_t = 30)]
     threshold: usize,
-    // TODO: add versioning method
+    #[arg(short, long)]
+    quiet: bool,
 }
 
 fn main() -> Result<(), CLIError> {
     let git_cli = GitCLI::parse();
 
-    commit_analyzer(git_cli.path.as_ref(), git_cli.limit, git_cli.threshold)?;
+    commit_analyzer(
+        git_cli.path.as_ref(),
+        git_cli.limit,
+        git_cli.threshold,
+        git_cli.quiet,
+    )?;
 
     Ok(())
 }
