@@ -1,4 +1,5 @@
 //! Commit parsing and validation;
+use pyo3::prelude::*;
 use regex::Regex;
 use std::{
     path::{Path, PathBuf},
@@ -15,13 +16,56 @@ fn is_valid_git_hash(hash: &str) -> bool {
     GIT_HASH_REGEX.is_match(hash)
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
+/// A git commit with its metadata.
+#[pyclass]
+#[derive(Debug, Clone)]
 pub struct Commit {
-    pub hash: String,
+    hash: String,
     author_name: String,
     author_email: String,
     subject: String,
+}
+
+#[pymethods]
+impl Commit {
+    /// The full 40-character commit hash.
+    #[getter]
+    fn hash(&self) -> &str {
+        &self.hash
+    }
+
+    /// The shortened 7-character commit hash.
+    #[getter]
+    fn short_hash(&self) -> &str {
+        &self.hash[..7]
+    }
+
+    /// The commit author's name.
+    #[getter]
+    fn author_name(&self) -> &str {
+        &self.author_name
+    }
+
+    /// The commit author's email address.
+    #[getter]
+    fn author_email(&self) -> &str {
+        &self.author_email
+    }
+
+    /// The commit message subject line.
+    #[getter]
+    fn subject(&self) -> &str {
+        &self.subject
+    }
+
+    /// Check if this commit's subject is shorter than the threshold.
+    fn is_short(&self, threshold: usize) -> bool {
+        self.subject.len() <= threshold
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Commit({}: \"{}\")", self.short_hash(), self.subject)
+    }
 }
 
 impl Commit {
@@ -77,14 +121,6 @@ impl Commit {
         }
 
         Ok(commits)
-    }
-
-    fn is_short(&self, threshold: usize) -> bool {
-        self.subject.len() <= threshold
-    }
-
-    fn short_hash(&self) -> &str {
-        &self.hash[..7]
     }
 
     pub fn find_short(commits: &[Commit], threshold: usize) -> Vec<(&str, &str)> {

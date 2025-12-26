@@ -1,0 +1,80 @@
+import mixed_pickles
+import pytest
+
+
+class TestFetchCommits:
+    """Tests for the fetch_commits function."""
+
+    def test_fetch_commits_returns_list(self):
+        """Should return a list of Commit objects."""
+        commits = mixed_pickles.fetch_commits(limit=5)
+        assert isinstance(commits, list)
+        assert len(commits) <= 5
+
+    def test_fetch_commits_with_path(self):
+        """Should work with explicit path."""
+        commits = mixed_pickles.fetch_commits(path=".", limit=3)
+        assert isinstance(commits, list)
+
+    def test_fetch_commits_limit_zero(self):
+        """Should return empty list with limit=0."""
+        commits = mixed_pickles.fetch_commits(limit=0)
+        assert commits == []
+
+    def test_fetch_commits_non_existent_path(self):
+        """Should raise error for non-existent path."""
+        with pytest.raises(RuntimeError, match="does not exist|PathNotFound"):
+            mixed_pickles.fetch_commits(path="/this/path/does/not/exist")
+
+    def test_fetch_commits_not_a_repository(self):
+        """Should raise error when path is not a git repository."""
+        with pytest.raises(RuntimeError, match="not a git repository|NotARepository"):
+            mixed_pickles.fetch_commits(path="/tmp")
+
+
+class TestCommit:
+    """Tests for the Commit class."""
+
+    @pytest.fixture
+    def commit(self):
+        """Get a single commit for testing."""
+        commits = mixed_pickles.fetch_commits(limit=1)
+        assert len(commits) == 1
+        return commits[0]
+
+    def test_commit_has_hash(self, commit):
+        """Commit should have a 40-character hash."""
+        assert len(commit.hash) == 40
+        assert all(c in "0123456789abcdef" for c in commit.hash)
+
+    def test_commit_has_short_hash(self, commit):
+        """Commit should have a 7-character short hash."""
+        assert len(commit.short_hash) == 7
+        assert commit.short_hash == commit.hash[:7]
+
+    def test_commit_has_author_name(self, commit):
+        """Commit should have an author name."""
+        assert isinstance(commit.author_name, str)
+        assert len(commit.author_name) > 0
+
+    def test_commit_has_author_email(self, commit):
+        """Commit should have an author email."""
+        assert isinstance(commit.author_email, str)
+        assert "@" in commit.author_email
+
+    def test_commit_has_subject(self, commit):
+        """Commit should have a subject."""
+        assert isinstance(commit.subject, str)
+
+    def test_commit_is_short_method(self, commit):
+        """is_short method should work correctly."""
+        # With threshold of 0, no commit is short
+        assert not commit.is_short(0)
+        # With very high threshold, all commits are short
+        assert commit.is_short(10000)
+
+    def test_commit_repr(self, commit):
+        """Commit should have a nice repr."""
+        repr_str = repr(commit)
+        assert commit.short_hash in repr_str
+        assert "Commit(" in repr_str

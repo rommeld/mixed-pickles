@@ -65,6 +65,29 @@ pub fn commit_analyzer(
     }
 }
 
+/// Fetch commits from a git repository.
+///
+/// Args:
+///     path: Path to the repository (default: current directory)
+///     limit: Maximum number of commits to fetch (default: all)
+///
+/// Returns:
+///     List of Commit objects
+///
+/// Raises:
+///     RuntimeError: If the path is invalid or git command fails
+#[pyfunction]
+#[pyo3(signature = (path=None, limit=None))]
+fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Commit>> {
+    let path_buf = path.map(PathBuf::from);
+    if let Some(ref p) = path_buf {
+        validate_repo_path(p)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    }
+    Commit::fetch_all(path_buf.as_ref(), limit)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
 /// Analyze commits and find those which do not match pre-defined features.
 ///
 /// Args:
@@ -130,6 +153,10 @@ fn main(py: Python<'_>) {
 mod mixed_pickles {
     #[pymodule_export]
     use super::analyze_commits;
+    #[pymodule_export]
+    use super::commit::Commit;
+    #[pymodule_export]
+    use super::fetch_commits;
     #[pymodule_export]
     use super::main;
 }
