@@ -4,10 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Documentation
-
-- update README.md and delete all descriptions (95a765f)
-
 ## [0.3.0] - 2025-12-26
 
 ### Added
@@ -25,7 +21,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- delete  reference in functions and types (5dcf168)
+- delete reference in functions and types (5dcf168)
 
 ### Added
 
@@ -36,4 +32,3 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - add configurable commit analysis options (f7491a0)
-

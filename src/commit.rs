@@ -28,7 +28,7 @@ pub struct Commit {
 
 #[pymethods]
 impl Commit {
-    /// The full 40-character commit hash.
+    /// The commit hash.
     #[getter]
     fn hash(&self) -> &str {
         &self.hash
@@ -56,6 +56,16 @@ impl Commit {
     fn is_short(&self, threshold: usize) -> bool {
         self.subject.len() <= threshold
     }
+}
+
+#[allow(unused)]
+enum Validation {
+    ShortCommit,
+    MissingReference,
+    VagueLanguage,
+    CommitFormat,
+    WipCommit,
+    NonImperative,
 }
 
 impl Commit {
@@ -119,11 +129,6 @@ impl Commit {
             .filter(|c| c.is_short(threshold))
             .map(|c| (c.hash(), c.subject.as_str()))
             .collect()
-    }
-
-    #[allow(unused)]
-    fn semantic_commit_validation() {
-        todo!()
     }
 }
 
