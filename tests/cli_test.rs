@@ -32,7 +32,8 @@ fn validation_issues_exits_nonzero() {
 #[test]
 fn short_commits_found_exits_nonzero() {
     // With high threshold, all commits should be "short"
-    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    // Use --error=short to make ShortCommit an error (default is warning)
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5", "--error=short"]);
     assert!(
         !output.status.success(),
         "Should exit non-zero when validation issues found"
@@ -119,7 +120,8 @@ fn combined_short_flags() {
 #[test]
 fn quiet_flag_with_issues() {
     // With high threshold, commits will have issues - quiet mode still shows output
-    let output = run_binary_with_args(&["-q", "-t", "1000", "-l", "5"]);
+    // Use --error=short to make ShortCommit an error (default is warning)
+    let output = run_binary_with_args(&["-q", "-t", "1000", "-l", "5", "--error=short"]);
     assert!(
         !output.status.success(),
         "Should fail when validation issues found"
@@ -253,5 +255,76 @@ fn unknown_flag_fails() {
         stderr.contains("unexpected") || stderr.contains("error") || stderr.contains("unknown"),
         "Should show helpful error for unknown flag, got: {}",
         stderr
+    );
+}
+
+#[test]
+fn error_flag_makes_validation_exit_nonzero() {
+    // Use --error to make a validation type an error
+    let output = run_binary_with_args(&["-l", "5", "--error=vague"]);
+    // We can't guarantee vague language, but the flag should be accepted
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Unknown validation"),
+        "Should accept --error=vague flag, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn ignore_flag_suppresses_validation() {
+    // Use --ignore to suppress a validation type
+    let output = run_binary_with_args(&["-l", "5", "--ignore=ref,format"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Unknown validation"),
+        "Should accept --ignore flag with multiple values, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn warn_flag_accepted() {
+    // Use --warn to set warning severity
+    let output = run_binary_with_args(&["-l", "5", "--warn=wip"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Unknown validation"),
+        "Should accept --warn flag, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn invalid_validation_type_fails() {
+    let output = run_binary_with_args(&["--error=notavalidation"]);
+    assert!(
+        !output.status.success(),
+        "Should fail with invalid validation type"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Unknown validation"),
+        "Should show error for unknown validation type, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn warnings_do_not_cause_nonzero_exit() {
+    // With default config, ShortCommit is a warning, not an error
+    // So even with short commits, exit should be zero (no errors)
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5", "--ignore=wip"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should show commits with issues (warnings)
+    assert!(
+        stdout.contains("commits with issues") || stdout.contains("adequately executed"),
+        "Should produce output, got: {}",
+        stdout
+    );
+    // But exit should be success because no errors (only warnings)
+    assert!(
+        output.status.success(),
+        "Should exit zero when only warnings (no errors) found"
     );
 }

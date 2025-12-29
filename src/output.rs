@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::validation::ValidationResult;
+use crate::validation::{Severity, ValidationConfig, ValidationResult};
 
 /// Status of commit message analysis.
 enum CommitMessageStatus {
@@ -23,6 +23,16 @@ impl CommitMessageStatus {
     }
 }
 
+/// Get the severity prefix for display.
+fn severity_prefix(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Error => "[error]",
+        Severity::Warning => "[warn]",
+        Severity::Info => "[info]",
+        Severity::Ignore => "",
+    }
+}
+
 /// Print validation results to stdout.
 pub fn print_results(
     validation_results: &[ValidationResult],
@@ -30,6 +40,7 @@ pub fn print_results(
     analyzed_count: usize,
     threshold: usize,
     path: &Option<PathBuf>,
+    config: &ValidationConfig,
 ) {
     let status = CommitMessageStatus::from_validation_results(validation_results, total_commits);
 
@@ -45,11 +56,29 @@ pub fn print_results(
                 "Analyzed {} of {} total commits on path {:?}\n",
                 analyzed_count, total_commits, path
             );
+
+            // Count by severity
+            let error_count = validation_results
+                .iter()
+                .filter(|r| r.failures.iter().any(|v| config.is_error(v)))
+                .count();
+            let warning_count = validation_results
+                .iter()
+                .filter(|r| {
+                    r.failures
+                        .iter()
+                        .any(|v| config.get_severity(v) == Severity::Warning)
+                })
+                .count();
+
             println!(
-                "Found {} commits with issues (threshold: {} chars):\n",
+                "Found {} commits with issues ({} errors, {} warnings) (threshold: {} chars):\n",
                 validation_results.len(),
+                error_count,
+                warning_count,
                 threshold
             );
+
             for result in validation_results {
                 println!(
                     "  {}: \"{}\"",
@@ -57,7 +86,8 @@ pub fn print_results(
                     result.commit.subject()
                 );
                 for failure in &result.failures {
-                    println!("    - {}", failure);
+                    let severity = config.get_severity(failure);
+                    println!("    {} {}", severity_prefix(severity), failure);
                 }
             }
         }

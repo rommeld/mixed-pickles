@@ -1,6 +1,8 @@
 //! Validation types and logic.
 
+use std::collections::HashMap;
 use std::fmt;
+use std::str::FromStr;
 use std::sync::LazyLock;
 
 use pyo3::prelude::*;
@@ -45,7 +47,7 @@ static NON_IMPERATIVE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Validation types for commit analysis.
 #[pyclass(eq, eq_int)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Validation {
     /// Commit message is too short.
     ShortCommit,
@@ -59,6 +61,155 @@ pub enum Validation {
     WipCommit,
     /// Commit message doesn't use imperative mood.
     NonImperative,
+}
+
+/// All validation types for iteration.
+pub const ALL_VALIDATIONS: [Validation; 6] = [
+    Validation::ShortCommit,
+    Validation::MissingReference,
+    Validation::InvalidFormat,
+    Validation::VagueLanguage,
+    Validation::WipCommit,
+    Validation::NonImperative,
+];
+
+impl Validation {
+    /// Returns the validation name as a string (for CLI parsing).
+    pub fn name(&self) -> &'static str {
+        match self {
+            Validation::ShortCommit => "ShortCommit",
+            Validation::MissingReference => "MissingReference",
+            Validation::InvalidFormat => "InvalidFormat",
+            Validation::VagueLanguage => "VagueLanguage",
+            Validation::WipCommit => "WipCommit",
+            Validation::NonImperative => "NonImperative",
+        }
+    }
+}
+
+impl FromStr for Validation {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "shortcommit" | "short" => Ok(Validation::ShortCommit),
+            "missingreference" | "reference" | "ref" => Ok(Validation::MissingReference),
+            "invalidformat" | "format" => Ok(Validation::InvalidFormat),
+            "vaguelanguage" | "vague" => Ok(Validation::VagueLanguage),
+            "wipcommit" | "wip" => Ok(Validation::WipCommit),
+            "nonimperative" | "imperative" => Ok(Validation::NonImperative),
+            _ => Err(format!("Unknown validation type: {}", s)),
+        }
+    }
+}
+
+/// Severity level for validation findings.
+#[pyclass(eq, eq_int)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Severity {
+    /// Finding blocks the operation (non-zero exit code).
+    Error,
+    /// Finding is reported but doesn't block.
+    Warning,
+    /// Informational finding.
+    Info,
+    /// Finding is not reported.
+    Ignore,
+}
+
+#[pymethods]
+impl Severity {
+    fn __str__(&self) -> &'static str {
+        match self {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+            Severity::Info => "info",
+            Severity::Ignore => "ignore",
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        match self {
+            Severity::Error => "Severity.Error".to_string(),
+            Severity::Warning => "Severity.Warning".to_string(),
+            Severity::Info => "Severity.Info".to_string(),
+            Severity::Ignore => "Severity.Ignore".to_string(),
+        }
+    }
+}
+
+impl fmt::Display for Severity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Severity::Error => write!(f, "error"),
+            Severity::Warning => write!(f, "warning"),
+            Severity::Info => write!(f, "info"),
+            Severity::Ignore => write!(f, "ignore"),
+        }
+    }
+}
+
+/// Configuration for validation severity levels.
+#[derive(Debug, Clone)]
+pub struct ValidationConfig {
+    severities: HashMap<Validation, Severity>,
+}
+
+impl Default for ValidationConfig {
+    fn default() -> Self {
+        let mut severities = HashMap::new();
+        // Default severities - sensible defaults that can be overridden
+        severities.insert(Validation::WipCommit, Severity::Error);
+        severities.insert(Validation::ShortCommit, Severity::Warning);
+        severities.insert(Validation::VagueLanguage, Severity::Warning);
+        severities.insert(Validation::NonImperative, Severity::Warning);
+        severities.insert(Validation::MissingReference, Severity::Info);
+        severities.insert(Validation::InvalidFormat, Severity::Info);
+        Self { severities }
+    }
+}
+
+impl ValidationConfig {
+    /// Create a new configuration with default severities.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the severity for a specific validation type.
+    pub fn set_severity(&mut self, validation: Validation, severity: Severity) {
+        self.severities.insert(validation, severity);
+    }
+
+    /// Get the severity for a validation type.
+    pub fn get_severity(&self, validation: &Validation) -> Severity {
+        self.severities
+            .get(validation)
+            .copied()
+            .unwrap_or(Severity::Warning)
+    }
+
+    /// Check if a validation should be reported (not ignored).
+    pub fn should_report(&self, validation: &Validation) -> bool {
+        self.get_severity(validation) != Severity::Ignore
+    }
+
+    /// Check if a validation is an error.
+    pub fn is_error(&self, validation: &Validation) -> bool {
+        self.get_severity(validation) == Severity::Error
+    }
+
+    /// Parse a comma-separated list of validation names and set their severity.
+    pub fn parse_and_set(&mut self, validations: &str, severity: Severity) -> Result<(), String> {
+        for name in validations.split(',') {
+            let name = name.trim();
+            if name.is_empty() {
+                continue;
+            }
+            let validation = Validation::from_str(name)?;
+            self.set_severity(validation, severity);
+        }
+        Ok(())
+    }
 }
 
 #[pymethods]

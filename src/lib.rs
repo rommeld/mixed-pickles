@@ -13,7 +13,7 @@ use error::CLIError;
 use git::{fetch_commits as git_fetch_commits, validate_repo_path};
 use output::print_results;
 use pyo3::prelude::*;
-use validation::validate_commits;
+use validation::{Severity, ValidationConfig, validate_commits};
 
 pub use commit::Commit;
 pub use validation::Validation;
@@ -35,12 +35,53 @@ pub struct GitCLI {
     /// Suppress output unless issues found
     #[arg(short, long)]
     pub quiet: bool,
+    /// Validations to treat as errors (comma-separated)
+    /// Available: ShortCommit, MissingReference, InvalidFormat, VagueLanguage, WipCommit, NonImperative
+    /// Aliases: short, ref, format, vague, wip, imperative
+    #[arg(long, value_name = "VALIDATIONS")]
+    pub error: Option<String>,
+    /// Validations to treat as warnings (comma-separated)
+    #[arg(long, value_name = "VALIDATIONS")]
+    pub warn: Option<String>,
+    /// Validations to ignore (comma-separated)
+    #[arg(long, value_name = "VALIDATIONS")]
+    pub ignore: Option<String>,
 }
 
 impl GitCLI {
+    /// Build a ValidationConfig from CLI arguments.
+    pub fn build_config(&self) -> Result<ValidationConfig, CLIError> {
+        let mut config = ValidationConfig::new();
+
+        if let Some(ref errors) = self.error {
+            config
+                .parse_and_set(errors, Severity::Error)
+                .map_err(CLIError::InvalidValidation)?;
+        }
+        if let Some(ref warnings) = self.warn {
+            config
+                .parse_and_set(warnings, Severity::Warning)
+                .map_err(CLIError::InvalidValidation)?;
+        }
+        if let Some(ref ignores) = self.ignore {
+            config
+                .parse_and_set(ignores, Severity::Ignore)
+                .map_err(CLIError::InvalidValidation)?;
+        }
+
+        Ok(config)
+    }
+
     /// Run the commit analyzer with these CLI arguments.
     pub fn run(&self) -> Result<(), CLIError> {
-        commit_analyzer(self.path.as_ref(), self.limit, self.threshold, self.quiet)
+        let config = self.build_config()?;
+        commit_analyzer(
+            self.path.as_ref(),
+            self.limit,
+            self.threshold,
+            self.quiet,
+            &config,
+        )
     }
 }
 
@@ -50,6 +91,7 @@ pub fn commit_analyzer(
     limit: Option<usize>,
     threshold: usize,
     quiet: bool,
+    config: &ValidationConfig,
 ) -> Result<(), CLIError> {
     if let Some(p) = path {
         validate_repo_path(p)?;
@@ -59,20 +101,40 @@ pub fn commit_analyzer(
     let validation_results = validate_commits(&commits, threshold);
     let analyzed_count = commits.len();
 
-    if !quiet || !validation_results.is_empty() {
+    // Filter results to only include reported validations
+    let filtered_results: Vec<_> = validation_results
+        .into_iter()
+        .map(|mut result| {
+            result.failures.retain(|v| config.should_report(v));
+            result
+        })
+        .filter(|result| !result.failures.is_empty())
+        .collect();
+
+    // Check if any errors exist
+    let has_errors = filtered_results
+        .iter()
+        .any(|r| r.failures.iter().any(|v| config.is_error(v)));
+
+    if !quiet || !filtered_results.is_empty() {
         print_results(
-            &validation_results,
+            &filtered_results,
             commits.len(),
             analyzed_count,
             threshold,
             &path.cloned(),
+            config,
         );
     }
 
-    if validation_results.is_empty() {
-        Ok(())
+    if has_errors {
+        let error_count = filtered_results
+            .iter()
+            .filter(|r| r.failures.iter().any(|v| config.is_error(v)))
+            .count();
+        Err(CLIError::ValidationFailed(error_count))
     } else {
-        Err(CLIError::ValidationFailed(validation_results.len()))
+        Ok(())
     }
 }
 
@@ -106,6 +168,9 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 ///     limit: Number of commits to analyze (default: all)
 ///     threshold: Minimum message length in characters (default: 30)
 ///     quiet: Suppress output unless issues found (default: False)
+///     errors: Comma-separated validation types to treat as errors
+///     warnings: Comma-separated validation types to treat as warnings
+///     ignore: Comma-separated validation types to ignore
 ///
 /// Returns:
 ///     None on success
@@ -113,15 +178,36 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 /// Raises:
 ///     RuntimeError: If validation issues are found or other errors occur
 #[pyfunction]
-#[pyo3(signature = (path=None, limit=None, threshold=30, quiet=false))]
+#[pyo3(signature = (path=None, limit=None, threshold=30, quiet=false, errors=None, warnings=None, ignore=None))]
 fn analyze_commits(
     path: Option<String>,
     limit: Option<usize>,
     threshold: usize,
     quiet: bool,
+    errors: Option<String>,
+    warnings: Option<String>,
+    ignore: Option<String>,
 ) -> PyResult<()> {
     let path_buf = path.map(PathBuf::from);
-    commit_analyzer(path_buf.as_ref(), limit, threshold, quiet)
+
+    let mut config = ValidationConfig::new();
+    if let Some(ref e) = errors {
+        config
+            .parse_and_set(e, Severity::Error)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    }
+    if let Some(ref w) = warnings {
+        config
+            .parse_and_set(w, Severity::Warning)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    }
+    if let Some(ref i) = ignore {
+        config
+            .parse_and_set(i, Severity::Ignore)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    }
+
+    commit_analyzer(path_buf.as_ref(), limit, threshold, quiet, &config)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
@@ -170,6 +256,8 @@ mod mixed_pickles {
     use super::fetch_commits;
     #[pymodule_export]
     use super::main;
+    #[pymodule_export]
+    use super::validation::Severity;
     #[pymodule_export]
     use super::validation::Validation;
 }

@@ -12,29 +12,31 @@ class TestAnalyzeCommits:
     def test_raises_when_short_commits_found(self):
         """Should raise RuntimeError when validation issues are found."""
         with pytest.raises(RuntimeError, match="validation issues"):
-            mixed_pickles.analyze_commits(threshold=1000)
+            mixed_pickles.analyze_commits(threshold=1000, errors="short")
 
     def test_raises_with_quiet_when_issues_found(self):
         """Should still raise even in quiet mode when issues found."""
         with pytest.raises(RuntimeError, match="validation issues"):
-            mixed_pickles.analyze_commits(threshold=1000, quiet=True)
+            mixed_pickles.analyze_commits(threshold=1000, quiet=True, errors="short")
 
     def test_validates_missing_reference(self):
         """Should detect commits missing issue references."""
         # Most real commits lack issue references, so this should raise
         with pytest.raises(RuntimeError, match="validation issues"):
-            mixed_pickles.analyze_commits(limit=5, threshold=0)
+            mixed_pickles.analyze_commits(limit=5, threshold=0, errors="reference")
 
-    def test_validates_invalid_format(self):
-        """Should detect commits with invalid format."""
-        # Real commits may lack conventional commit format
+    def test_validates_with_multiple_error_types(self):
+        """Should detect commits based on configured error types."""
+        # Most real commits lack issue references, so this should raise
         with pytest.raises(RuntimeError, match="validation issues"):
-            mixed_pickles.analyze_commits(limit=5, threshold=0)
+            mixed_pickles.analyze_commits(limit=5, threshold=0, errors="reference")
 
     def test_with_path_validates_commits(self):
         """Should validate commits when using explicit path."""
         with pytest.raises(RuntimeError, match="validation issues"):
-            mixed_pickles.analyze_commits(path=".", limit=5, threshold=0)
+            mixed_pickles.analyze_commits(
+                path=".", limit=5, threshold=0, errors="reference"
+            )
 
 
 class TestAnalyzeCommitsErrors:

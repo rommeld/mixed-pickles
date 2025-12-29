@@ -17,4 +17,6 @@ pub enum CLIError {
     IoError(#[from] io::Error),
     #[error("Found {0} commits with validation issues")]
     ValidationFailed(usize),
+    #[error("Invalid validation type: {0}")]
+    InvalidValidation(String),
 }

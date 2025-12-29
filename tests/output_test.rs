@@ -65,7 +65,8 @@ fn acceptable_status_shows_success_message() {
 #[test]
 fn needs_work_status_shows_analysis() {
     // With a high threshold, some commits should be flagged
-    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    // Use --error=short to make ShortCommit an error (default is warning)
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5", "--error=short"]);
     // Now exits non-zero when validation issues found
     assert!(
         !output.status.success(),
@@ -86,7 +87,8 @@ fn needs_work_status_shows_analysis() {
 
 #[test]
 fn needs_work_status_shows_commit_list() {
-    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    // Use --error=short to make ShortCommit an error (default is warning)
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5", "--error=short"]);
     assert!(
         !output.status.success(),
         "Should exit non-zero when short commits found"
@@ -104,7 +106,8 @@ fn needs_work_status_shows_commit_list() {
 
 #[test]
 fn output_shows_threshold_value() {
-    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    // Use --error=short to make ShortCommit an error (default is warning)
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5", "--error=short"]);
     assert!(
         !output.status.success(),
         "Should exit non-zero when validation issues found"
@@ -119,7 +122,8 @@ fn output_shows_threshold_value() {
 
 #[test]
 fn output_shows_path_info() {
-    let output = run_binary_with_args(&["--path", ".", "-t", "1000", "-l", "5"]);
+    // Use --error=short to make ShortCommit an error (default is warning)
+    let output = run_binary_with_args(&["--path", ".", "-t", "1000", "-l", "5", "--error=short"]);
     assert!(
         !output.status.success(),
         "Should exit non-zero when short commits found"
@@ -134,7 +138,8 @@ fn output_shows_path_info() {
 
 #[test]
 fn output_shows_analyzed_vs_total_commits() {
-    let output = run_binary_with_args(&["-t", "1000", "-l", "5"]);
+    // Use --error=short to make ShortCommit an error (default is warning)
+    let output = run_binary_with_args(&["-t", "1000", "-l", "5", "--error=short"]);
     assert!(
         !output.status.success(),
         "Should exit non-zero when short commits found"
