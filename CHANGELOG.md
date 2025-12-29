@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- add MissingReference, InvalidFormat, and VagueLanguage validation to detect generic commit descriptions (e145fd3)
+
 ## [0.3.0] - 2025-12-26
 
 ### Added
