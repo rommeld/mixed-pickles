@@ -8,7 +8,7 @@ fn no_arguments_runs_analysis() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Analysis runs and produces output (may find issues or not)
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output, got: {}",
         stdout
     );
@@ -23,7 +23,7 @@ fn validation_issues_exits_nonzero() {
     // Just verify the binary runs and produces output
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output, got: {}",
         stdout
     );
@@ -52,7 +52,7 @@ fn limit_flag_restricts_commits_analyzed() {
     let output = run_binary_with_args(&["--limit", "5"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output with --limit flag, got: {}",
         stdout
     );
@@ -75,7 +75,7 @@ fn both_flags_together() {
     let output = run_binary_with_args(&["--limit", "10", "--threshold", "50"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output with both flags, got: {}",
         stdout
     );
@@ -87,7 +87,7 @@ fn short_limit_flag() {
     let output = run_binary_with_args(&["-l", "3"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output with -l flag, got: {}",
         stdout
     );
@@ -99,7 +99,7 @@ fn short_threshold_flag() {
     let output = run_binary_with_args(&["-t", "50"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output with -t flag, got: {}",
         stdout
     );
@@ -111,7 +111,7 @@ fn combined_short_flags() {
     let output = run_binary_with_args(&["-l", "5", "-t", "50"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output with combined flags, got: {}",
         stdout
     );
@@ -153,7 +153,7 @@ fn path_flag_with_valid_repo() {
     let output = run_binary_with_args(&["--path", ".", "-l", "1"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output with --path flag, got: {}",
         stdout
     );
@@ -165,7 +165,7 @@ fn path_with_other_flags() {
     let output = run_binary_with_args(&["--path", ".", "-l", "5", "-t", "50"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output with path and other flags, got: {}",
         stdout
     );
@@ -348,7 +348,7 @@ fn disable_flag_prevents_validation() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // With most validations disabled, should have fewer (or no) issues
     assert!(
-        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        stdout.contains("Analyzing") || stdout.contains("adequately executed"),
         "Should produce valid output with --disable, got: {}",
         stdout
     );
@@ -402,5 +402,72 @@ fn disable_all_validations() {
     assert!(
         output.status.success(),
         "Should exit zero with all validations disabled"
+    );
+}
+
+#[test]
+fn strict_flag_accepted() {
+    // Verify --strict flag is accepted
+    let output = run_binary_with_args(&["--strict", "-l", "1"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("unexpected") && !stderr.contains("unknown"),
+        "Should accept --strict flag, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn strict_flag_exits_nonzero_on_warnings() {
+    // With --strict, warnings should cause exit non-zero
+    // ShortCommit is a warning by default, use high threshold to trigger it
+    // Disable WIP check since that's an error by default
+    let output = run_binary_with_args(&[
+        "-l",
+        "5",
+        "-t",
+        "1000",
+        "--strict",
+        "--disable=wip",
+        "--ignore=ref,format,vague,imperative",
+    ]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should show warnings
+    assert!(
+        stdout.contains("commits with issues"),
+        "Should show commits with issues, got: {}",
+        stdout
+    );
+    // Should exit non-zero because of warnings in strict mode
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero with warnings in strict mode"
+    );
+}
+
+#[test]
+fn without_strict_warnings_exit_zero() {
+    // Without --strict, warnings should exit zero
+    // ShortCommit is a warning by default, use high threshold to trigger it
+    // Disable WIP check since that's an error by default
+    let output = run_binary_with_args(&[
+        "-l",
+        "5",
+        "-t",
+        "1000",
+        "--disable=wip",
+        "--ignore=ref,format,vague,imperative",
+    ]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should show warnings
+    assert!(
+        stdout.contains("commits with issues"),
+        "Should show commits with issues, got: {}",
+        stdout
+    );
+    // Should exit zero because no errors (only warnings) without strict
+    assert!(
+        output.status.success(),
+        "Should exit zero with only warnings (no --strict)"
     );
 }

@@ -26,10 +26,19 @@ impl CommitMessageStatus {
 /// Get the severity prefix for display.
 fn severity_prefix(severity: Severity) -> &'static str {
     match severity {
-        Severity::Error => "[error]",
-        Severity::Warning => "[warn]",
-        Severity::Info => "[info]",
+        Severity::Error => "✗",
+        Severity::Warning => "⚠",
+        Severity::Info => "ℹ",
         Severity::Ignore => "",
+    }
+}
+
+/// Helper for singular/plural.
+fn pluralize(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("{} {}", count, singular)
+    } else {
+        format!("{} {}", count, plural)
     }
 }
 
@@ -51,40 +60,57 @@ pub fn print_results(
             println!("Commit messages are adequately executed.");
         }
         CommitMessageStatus::NeedsWork => {
+            // Header
+            let path_display = path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| ".".to_string());
             println!(
-                "Analyzed {} of {} total commits on path {:?}\n",
-                analyzed_count, total_commits, path
-            );
-
-            // Count by severity
-            let error_count = validation_results.iter().filter(|r| r.has_errors()).count();
-            let warning_count = validation_results
-                .iter()
-                .filter(|r| r.has_warnings())
-                .count();
-
-            println!(
-                "Found {} commits with issues ({} errors, {} warnings) (threshold: {} chars):\n",
-                validation_results.len(),
-                error_count,
-                warning_count,
+                "Analyzing {} in {} (threshold: {} chars)\n",
+                pluralize(analyzed_count, "commit", "commits"),
+                path_display,
                 threshold
             );
 
+            // Count findings by severity
+            let mut total_errors = 0;
+            let mut total_warnings = 0;
+            for result in validation_results {
+                for finding in &result.findings {
+                    match finding.severity {
+                        Severity::Error => total_errors += 1,
+                        Severity::Warning => total_warnings += 1,
+                        _ => {}
+                    }
+                }
+            }
+
+            // Print each commit with issues
             for result in validation_results {
                 println!(
-                    "  {}: \"{}\"",
+                    "Commit {} by {} <{}>",
                     result.commit.hash(),
-                    result.commit.subject()
+                    result.commit.author_name(),
+                    result.commit.author_email()
                 );
+                println!("  Subject: \"{}\"", result.commit.subject());
                 for finding in &result.findings {
                     println!(
-                        "    {} {}",
+                        "  {} {}",
                         severity_prefix(finding.severity),
                         finding.validation
                     );
                 }
+                println!();
             }
+
+            // Summary
+            println!(
+                "Summary: {} with issues ({}, {})",
+                pluralize(validation_results.len(), "commit", "commits"),
+                pluralize(total_errors, "error", "errors"),
+                pluralize(total_warnings, "warning", "warnings")
+            );
         }
     }
 }

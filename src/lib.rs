@@ -50,6 +50,9 @@ pub struct GitCLI {
     /// Unlike --ignore, this completely skips the validation check
     #[arg(long, value_name = "VALIDATIONS")]
     pub disable: Option<String>,
+    /// Treat warnings as errors (exit non-zero if any warnings)
+    #[arg(long)]
+    pub strict: bool,
 }
 
 impl GitCLI {
@@ -92,6 +95,7 @@ impl GitCLI {
             self.limit,
             self.threshold,
             self.quiet,
+            self.strict,
             &config,
         )
     }
@@ -103,6 +107,7 @@ pub fn commit_analyzer(
     limit: Option<usize>,
     threshold: usize,
     quiet: bool,
+    strict: bool,
     config: &ValidationConfig,
 ) -> Result<(), CLIError> {
     if let Some(p) = path {
@@ -118,8 +123,9 @@ pub fn commit_analyzer(
     let validation_results = validate_commits(&commits, &validation_config);
     let analyzed_count = commits.len();
 
-    // Check if any errors exist
+    // Check if any errors or warnings exist
     let has_errors = validation_results.iter().any(|r| r.has_errors());
+    let has_warnings = validation_results.iter().any(|r| r.has_warnings());
 
     if !quiet || !validation_results.is_empty() {
         print_results(
@@ -131,7 +137,7 @@ pub fn commit_analyzer(
         );
     }
 
-    if has_errors {
+    if has_errors || (strict && has_warnings) {
         let error_count = validation_results.iter().filter(|r| r.has_errors()).count();
         Err(CLIError::ValidationFailed(error_count))
     } else {
@@ -168,6 +174,7 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 ///     path: Path to the repository (default: current directory)
 ///     limit: Number of commits to analyze (default: all)
 ///     quiet: Suppress output unless issues found (default: False)
+///     strict: Treat warnings as errors (default: False)
 ///     config: ValidationConfig object for customizing validation behavior
 ///
 /// Returns:
@@ -176,11 +183,12 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 /// Raises:
 ///     RuntimeError: If validation issues are found or other errors occur
 #[pyfunction]
-#[pyo3(signature = (path=None, limit=None, quiet=false, config=None))]
+#[pyo3(signature = (path=None, limit=None, quiet=false, strict=false, config=None))]
 fn analyze_commits(
     path: Option<String>,
     limit: Option<usize>,
     quiet: bool,
+    strict: bool,
     config: Option<ValidationConfig>,
 ) -> PyResult<()> {
     let path_buf = path.map(PathBuf::from);
@@ -191,6 +199,7 @@ fn analyze_commits(
         limit,
         validation_config.threshold,
         quiet,
+        strict,
         &validation_config,
     )
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))

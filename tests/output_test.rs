@@ -55,8 +55,9 @@ fn acceptable_status_shows_success_message() {
     let output = run_binary_with_args(&["-l", "1"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Either success message or issues found - both are valid output formats
+    // New format uses "Summary: X commits with issues"
     assert!(
-        stdout.contains("adequately executed") || stdout.contains("commits with issues"),
+        stdout.contains("adequately executed") || stdout.contains("Summary:"),
         "Should show valid output format, got: {}",
         stdout
     );
@@ -74,13 +75,13 @@ fn needs_work_status_shows_analysis() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzed") && stdout.contains("total commits"),
+        stdout.contains("Analyzing") && stdout.contains("commits in"),
         "Should show analysis header, got: {}",
         stdout
     );
     assert!(
-        stdout.contains("Found") && stdout.contains("commits with issues"),
-        "Should show count of commits with issues, got: {}",
+        stdout.contains("Summary:") && stdout.contains("commits with issues"),
+        "Should show summary with count of commits with issues, got: {}",
         stdout
     );
 }
@@ -94,12 +95,14 @@ fn needs_work_status_shows_commit_list() {
         "Should exit non-zero when short commits found"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let has_commit_format = stdout
+    // New format: "Commit HASH by AUTHOR <EMAIL>" and "  Subject: \"...\""
+    let has_commit_header = stdout
         .lines()
-        .any(|line| line.starts_with("  ") && line.contains(": \"") && line.ends_with('"'));
+        .any(|line| line.starts_with("Commit ") && line.contains(" by "));
+    let has_subject_line = stdout.lines().any(|line| line.starts_with("  Subject: \""));
     assert!(
-        has_commit_format,
-        "Should list commits in format '  hash: \"subject\"', got: {}",
+        has_commit_header && has_subject_line,
+        "Should list commits with header and subject, got: {}",
         stdout
     );
 }
@@ -129,8 +132,9 @@ fn output_shows_path_info() {
         "Should exit non-zero when short commits found"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // New format: "Analyzing X commits in PATH (threshold: Y chars)"
     assert!(
-        stdout.contains("on path"),
+        stdout.contains("commits in ."),
         "Should show path info in output, got: {}",
         stdout
     );
@@ -145,11 +149,11 @@ fn output_shows_analyzed_vs_total_commits() {
         "Should exit non-zero when short commits found"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Check for pattern "Analyzed N of N total commits" (N can be any number)
-    let has_format = stdout.contains(" of ") && stdout.contains("total commits");
+    // New format: "Analyzing X commits in PATH (threshold: Y chars)"
+    let has_format = stdout.contains("Analyzing") && stdout.contains("commits in");
     assert!(
         has_format,
-        "Should show 'X of Y total commits', got: {}",
+        "Should show 'Analyzing X commits in PATH', got: {}",
         stdout
     );
 }
