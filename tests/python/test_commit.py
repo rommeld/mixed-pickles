@@ -77,10 +77,22 @@ class TestValidation:
         """Should have MissingReference variant."""
         assert hasattr(mixed_pickles.Validation, "MissingReference")
 
+    def test_validation_invalid_format(self):
+        """Should have InvalidFormat variant."""
+        assert hasattr(mixed_pickles.Validation, "InvalidFormat")
+
+    def test_validation_vague_language(self):
+        """Should have VagueLanguage variant."""
+        assert hasattr(mixed_pickles.Validation, "VagueLanguage")
+
     def test_validation_str(self):
         """Validation should have human-readable string representation."""
         assert str(mixed_pickles.Validation.ShortCommit) == "Short commit message"
-        assert str(mixed_pickles.Validation.MissingReference) == "Missing reference"
+        assert (
+            "issue reference" in str(mixed_pickles.Validation.MissingReference).lower()
+        )
+        assert "format" in str(mixed_pickles.Validation.InvalidFormat).lower()
+        assert "vague" in str(mixed_pickles.Validation.VagueLanguage).lower()
 
     def test_validation_repr(self):
         """Validation should have debug representation."""
@@ -88,6 +100,12 @@ class TestValidation:
         assert (
             repr(mixed_pickles.Validation.MissingReference)
             == "Validation.MissingReference"
+        )
+        assert (
+            repr(mixed_pickles.Validation.InvalidFormat) == "Validation.InvalidFormat"
+        )
+        assert (
+            repr(mixed_pickles.Validation.VagueLanguage) == "Validation.VagueLanguage"
         )
 
     def test_validation_equality(self):
@@ -98,6 +116,14 @@ class TestValidation:
         assert (
             mixed_pickles.Validation.ShortCommit
             != mixed_pickles.Validation.MissingReference
+        )
+        assert (
+            mixed_pickles.Validation.MissingReference
+            != mixed_pickles.Validation.InvalidFormat
+        )
+        assert (
+            mixed_pickles.Validation.InvalidFormat
+            != mixed_pickles.Validation.VagueLanguage
         )
 
 

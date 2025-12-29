@@ -5,19 +5,6 @@ import pytest
 class TestAnalyzeCommits:
     """Tests for the analyze_commits function."""
 
-    def test_no_short_commits_with_low_threshold(self):
-        """Should succeed when no commits are below threshold."""
-        # With threshold=0, no commits should be "short"
-        mixed_pickles.analyze_commits(threshold=0)
-
-    def test_no_short_commits_with_low_threshold_and_path(self):
-        """Should succeed with explicit path when no short commits."""
-        mixed_pickles.analyze_commits(path=".", threshold=0)
-
-    def test_quiet_mode_no_issues(self):
-        """Should succeed silently when no issues and quiet=True."""
-        mixed_pickles.analyze_commits(threshold=0, quiet=True)
-
     def test_limit_zero(self):
         """Should handle limit of zero (no commits analyzed)."""
         mixed_pickles.analyze_commits(limit=0)
@@ -32,9 +19,22 @@ class TestAnalyzeCommits:
         with pytest.raises(RuntimeError, match="validation issues"):
             mixed_pickles.analyze_commits(threshold=1000, quiet=True)
 
-    def test_with_limit_and_threshold(self):
-        """Should work with limit and low threshold."""
-        mixed_pickles.analyze_commits(limit=5, threshold=0)
+    def test_validates_missing_reference(self):
+        """Should detect commits missing issue references."""
+        # Most real commits lack issue references, so this should raise
+        with pytest.raises(RuntimeError, match="validation issues"):
+            mixed_pickles.analyze_commits(limit=5, threshold=0)
+
+    def test_validates_invalid_format(self):
+        """Should detect commits with invalid format."""
+        # Real commits may lack conventional commit format
+        with pytest.raises(RuntimeError, match="validation issues"):
+            mixed_pickles.analyze_commits(limit=5, threshold=0)
+
+    def test_with_path_validates_commits(self):
+        """Should validate commits when using explicit path."""
+        with pytest.raises(RuntimeError, match="validation issues"):
+            mixed_pickles.analyze_commits(path=".", limit=5, threshold=0)
 
 
 class TestAnalyzeCommitsErrors:

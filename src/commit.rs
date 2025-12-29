@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 
-use crate::validation::Validation;
+use crate::validation::{Validation, has_conventional_format, has_reference, has_vague_language};
 
 /// A git commit with its metadata.
 #[pyclass]
@@ -67,10 +67,17 @@ impl Commit {
             failures.push(Validation::ShortCommit);
         }
 
-        // Placeholder: MissingReference not yet implemented
-        // if self.is_missing_reference() {
-        //     failures.push(Validation::MissingReference);
-        // }
+        if !has_reference(&self.subject) {
+            failures.push(Validation::MissingReference);
+        }
+
+        if !has_conventional_format(&self.subject) {
+            failures.push(Validation::InvalidFormat);
+        }
+
+        if has_vague_language(&self.subject) {
+            failures.push(Validation::VagueLanguage);
+        }
 
         failures
     }
