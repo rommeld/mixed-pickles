@@ -7,6 +7,19 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - add NonImperative validation to detect commit messages that do not use imperative mood (7302698)
+- add WIPCommit validation to detect wip commits (671e865)
+- add configurable severity levels for commit validations (d947f21)
+- add --strict flag to treat warnings as errors (b60e345)
+- show total repository commit count in output (1284416)
+
+### Changed
+
+- improve CLI output format with better commit details (b60e345)
+- simplify analyze_commits Python API (2df7e76)
+
+### Fixed
+
+- handle singular/plural in commit issue messages (18b60cf, 48f4683)
 
 ## [0.4.0] - 2025-12-29
 
