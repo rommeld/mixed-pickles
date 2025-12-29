@@ -12,3 +12,15 @@ pub fn run_binary_with_args(args: &[&str]) -> std::process::Output {
 pub fn run_binary() -> std::process::Output {
     run_binary_with_args(&[])
 }
+
+/// Check if output contains "commit(s) with issues" (handles singular/plural).
+pub fn has_issues_summary(stdout: &str) -> bool {
+    stdout.contains("commit with issues") || stdout.contains("commits with issues")
+}
+
+/// Check if output contains the analysis header (handles singular/plural).
+pub fn has_analyzing_header(stdout: &str) -> bool {
+    stdout.contains("Analyzed")
+        && (stdout.contains("commit of") || stdout.contains("commits of"))
+        && stdout.contains("total in")
+}

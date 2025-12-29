@@ -66,8 +66,9 @@ pub fn print_results(
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|| ".".to_string());
             println!(
-                "Analyzing {} in {} (threshold: {} chars)\n",
+                "Analyzed {} of {} total in {} (threshold: {} chars)\n",
                 pluralize(analyzed_count, "commit", "commits"),
+                total_commits,
                 path_display,
                 threshold
             );

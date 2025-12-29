@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{run_binary, run_binary_with_args};
+use common::{has_analyzing_header, has_issues_summary, run_binary, run_binary_with_args};
 
 #[test]
 fn binary_runs_and_produces_output() {
@@ -22,10 +22,8 @@ fn binary_produces_valid_output() {
 
     if !stdout.is_empty() {
         let has_success_msg = stdout.contains("adequately executed");
-        let has_warning_msg =
-            stdout.contains("commit with issues") || stdout.contains("commits with issues");
         assert!(
-            has_success_msg || has_warning_msg,
+            has_success_msg || has_issues_summary(&stdout),
             "Output should contain expected format, got: {}",
             stdout
         );
@@ -76,14 +74,12 @@ fn needs_work_status_shows_analysis() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Analyzing")
-            && (stdout.contains("commit in") || stdout.contains("commits in")),
+        has_analyzing_header(&stdout),
         "Should show analysis header, got: {}",
         stdout
     );
     assert!(
-        stdout.contains("Summary:")
-            && (stdout.contains("commit with issues") || stdout.contains("commits with issues")),
+        stdout.contains("Summary:") && has_issues_summary(&stdout),
         "Should show summary with count of commits with issues, got: {}",
         stdout
     );
@@ -135,9 +131,8 @@ fn output_shows_path_info() {
         "Should exit non-zero when short commits found"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // New format: "Analyzing X commit(s) in PATH (threshold: Y chars)"
     assert!(
-        stdout.contains("commit in .") || stdout.contains("commits in ."),
+        has_analyzing_header(&stdout) && stdout.contains(" in ."),
         "Should show path info in output, got: {}",
         stdout
     );
@@ -152,11 +147,8 @@ fn output_shows_analyzed_vs_total_commits() {
         "Should exit non-zero when short commits found"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // New format: "Analyzing X commit(s) in PATH (threshold: Y chars)"
-    let has_format = stdout.contains("Analyzing")
-        && (stdout.contains("commit in") || stdout.contains("commits in"));
     assert!(
-        has_format,
+        has_analyzing_header(&stdout),
         "Should show 'Analyzing X commit(s) in PATH', got: {}",
         stdout
     );

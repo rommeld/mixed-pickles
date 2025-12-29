@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use error::CLIError;
-use git::{fetch_commits as git_fetch_commits, validate_repo_path};
+use git::{count_commits, fetch_commits as git_fetch_commits, validate_repo_path};
 use output::print_results;
 use pyo3::prelude::*;
 use validation::{Severity, ValidationConfig, validate_commits};
@@ -114,6 +114,7 @@ pub fn commit_analyzer(
         validate_repo_path(p)?;
     }
 
+    let total_commits = count_commits(path)?;
     let commits = git_fetch_commits(path, limit)?;
 
     // Build config with threshold
@@ -130,7 +131,7 @@ pub fn commit_analyzer(
     if !quiet || !validation_results.is_empty() {
         print_results(
             &validation_results,
-            commits.len(),
+            total_commits,
             analyzed_count,
             threshold,
             &path.cloned(),

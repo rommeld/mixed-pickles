@@ -60,6 +60,28 @@ pub fn fetch_commits(
     Ok(commits)
 }
 
+/// Count total commits in a git repository.
+pub fn count_commits(repo_path: Option<&PathBuf>) -> Result<usize, CLIError> {
+    let mut command = Command::new("git");
+
+    if let Some(path) = repo_path {
+        command.current_dir(path);
+    }
+
+    let output = command.args(["rev-list", "--count", "HEAD"]).output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CLIError::GitCommandFailed(stderr.trim().to_string()));
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout);
+    count_str
+        .trim()
+        .parse()
+        .map_err(|_| CLIError::GitCommandFailed("Failed to parse commit count".to_string()))
+}
+
 /// Validate that a path is a git repository.
 pub fn validate_repo_path(path: &Path) -> Result<(), CLIError> {
     if !path.exists() {
