@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-12-29
+
 ### Added
 
 - add NonImperative validation to detect commit messages that do not use imperative mood (7302698)
