@@ -85,6 +85,10 @@ class TestValidation:
         """Should have VagueLanguage variant."""
         assert hasattr(mixed_pickles.Validation, "VagueLanguage")
 
+    def test_validation_wip_commit(self):
+        """Should have WipCommit variant."""
+        assert hasattr(mixed_pickles.Validation, "WipCommit")
+
     def test_validation_str(self):
         """Validation should have human-readable string representation."""
         assert str(mixed_pickles.Validation.ShortCommit) == "Short commit message"
@@ -93,6 +97,7 @@ class TestValidation:
         )
         assert "format" in str(mixed_pickles.Validation.InvalidFormat).lower()
         assert "vague" in str(mixed_pickles.Validation.VagueLanguage).lower()
+        assert "wip" in str(mixed_pickles.Validation.WipCommit).lower()
 
     def test_validation_repr(self):
         """Validation should have debug representation."""
@@ -107,6 +112,7 @@ class TestValidation:
         assert (
             repr(mixed_pickles.Validation.VagueLanguage) == "Validation.VagueLanguage"
         )
+        assert repr(mixed_pickles.Validation.WipCommit) == "Validation.WipCommit"
 
     def test_validation_equality(self):
         """Validation variants should be comparable."""
@@ -124,6 +130,9 @@ class TestValidation:
         assert (
             mixed_pickles.Validation.InvalidFormat
             != mixed_pickles.Validation.VagueLanguage
+        )
+        assert (
+            mixed_pickles.Validation.VagueLanguage != mixed_pickles.Validation.WipCommit
         )
 
 

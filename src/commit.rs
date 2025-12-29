@@ -2,7 +2,9 @@
 
 use pyo3::prelude::*;
 
-use crate::validation::{Validation, has_conventional_format, has_reference, has_vague_language};
+use crate::validation::{
+    Validation, has_conventional_format, has_reference, has_vague_language, is_wip_commit,
+};
 
 /// A git commit with its metadata.
 #[pyclass]
@@ -77,6 +79,10 @@ impl Commit {
 
         if has_vague_language(&self.subject) {
             failures.push(Validation::VagueLanguage);
+        }
+
+        if is_wip_commit(&self.subject) {
+            failures.push(Validation::WipCommit);
         }
 
         failures

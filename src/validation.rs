@@ -27,6 +27,13 @@ static VAGUE_LANGUAGE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         .expect("Invalid vague language regex")
 });
 
+/// Regex for WIP (work-in-progress) commit patterns.
+/// Matches commits that shouldn't be in final history like "WIP", "fixup!", "squash!".
+static WIP_COMMIT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(^wip\b|^wip:|^\[wip\]|\bwork.?in.?progress\b|^fixup!|^squash!|^amend!|\bdo\s*not\s*merge\b|\bdon'?t\s*merge\b|\bwip\s*$)")
+        .expect("Invalid WIP commit regex")
+});
+
 /// Validation types for commit analysis.
 #[pyclass(eq, eq_int)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,7 +46,8 @@ pub enum Validation {
     InvalidFormat,
     /// Commit uses vague language without meaningful context.
     VagueLanguage,
-    // WipCommit,
+    /// Commit is a work-in-progress and shouldn't be in final history.
+    WipCommit,
     // NonImperative,
 }
 
@@ -52,6 +60,7 @@ impl Validation {
             Validation::MissingReference => "Missing issue reference (e.g., #123)",
             Validation::InvalidFormat => "Invalid format (expected: type: description)",
             Validation::VagueLanguage => "Vague language (e.g., 'fix bug', 'update code')",
+            Validation::WipCommit => "Work-in-progress commit (e.g., 'WIP', 'fixup!')",
         }
     }
 
@@ -62,6 +71,7 @@ impl Validation {
             Validation::MissingReference => "Validation.MissingReference".to_string(),
             Validation::InvalidFormat => "Validation.InvalidFormat".to_string(),
             Validation::VagueLanguage => "Validation.VagueLanguage".to_string(),
+            Validation::WipCommit => "Validation.WipCommit".to_string(),
         }
     }
 }
@@ -74,6 +84,9 @@ impl fmt::Display for Validation {
             Validation::InvalidFormat => write!(f, "Invalid format (expected: type: description)"),
             Validation::VagueLanguage => {
                 write!(f, "Vague language (e.g., 'fix bug', 'update code')")
+            }
+            Validation::WipCommit => {
+                write!(f, "Work-in-progress commit (e.g., 'WIP', 'fixup!')")
             }
         }
     }
@@ -92,6 +105,11 @@ pub fn has_conventional_format(subject: &str) -> bool {
 /// Check if a commit message contains vague language.
 pub fn has_vague_language(subject: &str) -> bool {
     VAGUE_LANGUAGE_REGEX.is_match(subject)
+}
+
+/// Check if a commit message indicates work-in-progress.
+pub fn is_wip_commit(subject: &str) -> bool {
+    WIP_COMMIT_REGEX.is_match(subject)
 }
 
 /// A commit paired with its validation failures.
@@ -303,6 +321,78 @@ mod tests {
         }
     }
 
+    mod wip_commit_validation {
+        use super::*;
+
+        #[test]
+        fn detects_wip_prefix() {
+            assert!(is_wip_commit("WIP add new feature"));
+            assert!(is_wip_commit("wip add new feature"));
+            assert!(is_wip_commit("WIP: add new feature"));
+            assert!(is_wip_commit("wip: add new feature"));
+        }
+
+        #[test]
+        fn detects_wip_in_brackets() {
+            assert!(is_wip_commit("[WIP] add new feature"));
+            assert!(is_wip_commit("[wip] add new feature"));
+        }
+
+        #[test]
+        fn detects_wip_suffix() {
+            assert!(is_wip_commit("add new feature WIP"));
+            assert!(is_wip_commit("add new feature wip"));
+        }
+
+        #[test]
+        fn detects_work_in_progress() {
+            assert!(is_wip_commit("work in progress"));
+            assert!(is_wip_commit("Work In Progress"));
+            assert!(is_wip_commit("work-in-progress"));
+            assert!(is_wip_commit("feat: add feature (work in progress)"));
+        }
+
+        #[test]
+        fn detects_fixup_commits() {
+            assert!(is_wip_commit("fixup! feat: add new feature"));
+            assert!(is_wip_commit("fixup! fix typo"));
+        }
+
+        #[test]
+        fn detects_squash_commits() {
+            assert!(is_wip_commit("squash! feat: add new feature"));
+            assert!(is_wip_commit("squash! fix typo"));
+        }
+
+        #[test]
+        fn detects_amend_commits() {
+            assert!(is_wip_commit("amend! feat: add new feature"));
+            assert!(is_wip_commit("amend! fix typo"));
+        }
+
+        #[test]
+        fn detects_do_not_merge() {
+            assert!(is_wip_commit("feat: add feature - DO NOT MERGE"));
+            assert!(is_wip_commit("do not merge"));
+            assert!(is_wip_commit("don't merge"));
+            assert!(is_wip_commit("dont merge"));
+        }
+
+        #[test]
+        fn allows_normal_commits() {
+            assert!(!is_wip_commit("feat: add new feature #123"));
+            assert!(!is_wip_commit("fix: resolve memory leak"));
+            assert!(!is_wip_commit("docs: update README"));
+        }
+
+        #[test]
+        fn allows_wip_in_middle_of_word() {
+            // "wip" in the middle of a word should not trigger
+            assert!(!is_wip_commit("feat: add wiping functionality"));
+            assert!(!is_wip_commit("fix: handle equipped items"));
+        }
+    }
+
     mod validate_commits_tests {
         use super::*;
 
@@ -364,6 +454,16 @@ mod tests {
             let results = validate_commits(&commits, 10);
             assert_eq!(results.len(), 1);
             assert!(results[0].failures.contains(&Validation::VagueLanguage));
+        }
+
+        #[test]
+        fn wip_commit_fails() {
+            let commits = vec![create_valid_commit(
+                "WIP: feat: add user authentication #123",
+            )];
+            let results = validate_commits(&commits, 10);
+            assert_eq!(results.len(), 1);
+            assert!(results[0].failures.contains(&Validation::WipCommit));
         }
     }
 }
