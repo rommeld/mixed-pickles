@@ -34,6 +34,15 @@ static WIP_COMMIT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         .expect("Invalid WIP commit regex")
 });
 
+/// Regex for non-imperative mood patterns in commit messages.
+/// Detects past tense (-ed) and present continuous (-ing) verb forms at the start.
+static NON_IMPERATIVE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    // Match after optional conventional commit prefix (type(scope): )
+    // Common past tense and -ing forms that indicate non-imperative mood
+    Regex::new(r"(?i)^(?:(?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([^)]+\))?!?:\s*)?(added|removed|fixed|updated|changed|implemented|created|deleted|modified|refactored|improved|resolved|merged|moved|renamed|replaced|cleaned|enabled|disabled|converted|introduced|integrated|adjusted|corrected|enhanced|extended|optimized|simplified|upgraded|migrated|adding|removing|fixing|updating|changing|implementing|creating|deleting|modifying|refactoring|improving|resolving|merging|moving|renaming|replacing|cleaning|enabling|disabling|converting|introducing|integrating|adjusting|correcting|enhancing|extending|optimizing|simplifying|upgrading|migrating)\b")
+        .expect("Invalid non-imperative regex")
+});
+
 /// Validation types for commit analysis.
 #[pyclass(eq, eq_int)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,7 +57,8 @@ pub enum Validation {
     VagueLanguage,
     /// Commit is a work-in-progress and shouldn't be in final history.
     WipCommit,
-    // NonImperative,
+    /// Commit message doesn't use imperative mood.
+    NonImperative,
 }
 
 #[pymethods]
@@ -61,6 +71,7 @@ impl Validation {
             Validation::InvalidFormat => "Invalid format (expected: type: description)",
             Validation::VagueLanguage => "Vague language (e.g., 'fix bug', 'update code')",
             Validation::WipCommit => "Work-in-progress commit (e.g., 'WIP', 'fixup!')",
+            Validation::NonImperative => "Non-imperative mood (use 'Add' not 'Added')",
         }
     }
 
@@ -72,6 +83,7 @@ impl Validation {
             Validation::InvalidFormat => "Validation.InvalidFormat".to_string(),
             Validation::VagueLanguage => "Validation.VagueLanguage".to_string(),
             Validation::WipCommit => "Validation.WipCommit".to_string(),
+            Validation::NonImperative => "Validation.NonImperative".to_string(),
         }
     }
 }
@@ -87,6 +99,9 @@ impl fmt::Display for Validation {
             }
             Validation::WipCommit => {
                 write!(f, "Work-in-progress commit (e.g., 'WIP', 'fixup!')")
+            }
+            Validation::NonImperative => {
+                write!(f, "Non-imperative mood (use 'Add' not 'Added')")
             }
         }
     }
@@ -110,6 +125,11 @@ pub fn has_vague_language(subject: &str) -> bool {
 /// Check if a commit message indicates work-in-progress.
 pub fn is_wip_commit(subject: &str) -> bool {
     WIP_COMMIT_REGEX.is_match(subject)
+}
+
+/// Check if a commit message uses non-imperative mood.
+pub fn is_non_imperative(subject: &str) -> bool {
+    NON_IMPERATIVE_REGEX.is_match(subject)
 }
 
 /// A commit paired with its validation failures.
@@ -393,6 +413,91 @@ mod tests {
         }
     }
 
+    mod non_imperative_validation {
+        use super::*;
+
+        #[test]
+        fn detects_past_tense_added() {
+            assert!(is_non_imperative("Added new feature"));
+            assert!(is_non_imperative("added user authentication"));
+            assert!(is_non_imperative("feat: Added new endpoint"));
+        }
+
+        #[test]
+        fn detects_past_tense_fixed() {
+            assert!(is_non_imperative("Fixed bug in parser"));
+            assert!(is_non_imperative("fix: Fixed memory leak"));
+        }
+
+        #[test]
+        fn detects_past_tense_updated() {
+            assert!(is_non_imperative("Updated dependencies"));
+            assert!(is_non_imperative("docs: Updated README"));
+        }
+
+        #[test]
+        fn detects_past_tense_removed() {
+            assert!(is_non_imperative("Removed unused code"));
+            assert!(is_non_imperative("refactor: Removed dead code"));
+        }
+
+        #[test]
+        fn detects_past_tense_other_verbs() {
+            assert!(is_non_imperative("Changed configuration"));
+            assert!(is_non_imperative("Implemented feature"));
+            assert!(is_non_imperative("Created new module"));
+            assert!(is_non_imperative("Deleted old files"));
+            assert!(is_non_imperative("Modified settings"));
+            assert!(is_non_imperative("Refactored code"));
+            assert!(is_non_imperative("Improved performance"));
+            assert!(is_non_imperative("Resolved conflict"));
+            assert!(is_non_imperative("Merged branch"));
+            assert!(is_non_imperative("Moved files"));
+            assert!(is_non_imperative("Renamed variable"));
+        }
+
+        #[test]
+        fn detects_present_continuous() {
+            assert!(is_non_imperative("Adding new feature"));
+            assert!(is_non_imperative("Fixing bug"));
+            assert!(is_non_imperative("Updating tests"));
+            assert!(is_non_imperative("Removing unused imports"));
+            assert!(is_non_imperative("feat: Implementing auth"));
+        }
+
+        #[test]
+        fn allows_imperative_mood() {
+            assert!(!is_non_imperative("Add new feature"));
+            assert!(!is_non_imperative("Fix bug in parser"));
+            assert!(!is_non_imperative("Update dependencies"));
+            assert!(!is_non_imperative("Remove unused code"));
+            assert!(!is_non_imperative("feat: Add user authentication"));
+            assert!(!is_non_imperative("fix: Resolve memory leak"));
+        }
+
+        #[test]
+        fn allows_imperative_with_conventional_prefix() {
+            assert!(!is_non_imperative("feat: Add new endpoint"));
+            assert!(!is_non_imperative("fix(api): Handle edge case"));
+            assert!(!is_non_imperative("docs: Update README"));
+            assert!(!is_non_imperative("refactor!: Simplify logic"));
+        }
+
+        #[test]
+        fn case_insensitive() {
+            assert!(is_non_imperative("ADDED feature"));
+            assert!(is_non_imperative("Fixed BUG"));
+            assert!(is_non_imperative("UPDATING tests"));
+        }
+
+        #[test]
+        fn does_not_match_mid_sentence() {
+            // These should not trigger because the verb is not at the start
+            assert!(!is_non_imperative("feat: Add updated timestamp #123"));
+            assert!(!is_non_imperative("fix: Handle added complexity"));
+        }
+    }
+
     mod validate_commits_tests {
         use super::*;
 
@@ -464,6 +569,14 @@ mod tests {
             let results = validate_commits(&commits, 10);
             assert_eq!(results.len(), 1);
             assert!(results[0].failures.contains(&Validation::WipCommit));
+        }
+
+        #[test]
+        fn non_imperative_commit_fails() {
+            let commits = vec![create_valid_commit("feat: Added user authentication #123")];
+            let results = validate_commits(&commits, 10);
+            assert_eq!(results.len(), 1);
+            assert!(results[0].failures.contains(&Validation::NonImperative));
         }
     }
 }

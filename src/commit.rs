@@ -3,7 +3,8 @@
 use pyo3::prelude::*;
 
 use crate::validation::{
-    Validation, has_conventional_format, has_reference, has_vague_language, is_wip_commit,
+    Validation, has_conventional_format, has_reference, has_vague_language, is_non_imperative,
+    is_wip_commit,
 };
 
 /// A git commit with its metadata.
@@ -83,6 +84,10 @@ impl Commit {
 
         if is_wip_commit(&self.subject) {
             failures.push(Validation::WipCommit);
+        }
+
+        if is_non_imperative(&self.subject) {
+            failures.push(Validation::NonImperative);
         }
 
         failures
