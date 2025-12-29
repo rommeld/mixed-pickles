@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::validation::{Severity, ValidationConfig, ValidationResult};
+use crate::validation::{Severity, ValidationResult};
 
 /// Status of commit message analysis.
 enum CommitMessageStatus {
@@ -40,7 +40,6 @@ pub fn print_results(
     analyzed_count: usize,
     threshold: usize,
     path: &Option<PathBuf>,
-    config: &ValidationConfig,
 ) {
     let status = CommitMessageStatus::from_validation_results(validation_results, total_commits);
 
@@ -58,17 +57,10 @@ pub fn print_results(
             );
 
             // Count by severity
-            let error_count = validation_results
-                .iter()
-                .filter(|r| r.failures.iter().any(|v| config.is_error(v)))
-                .count();
+            let error_count = validation_results.iter().filter(|r| r.has_errors()).count();
             let warning_count = validation_results
                 .iter()
-                .filter(|r| {
-                    r.failures
-                        .iter()
-                        .any(|v| config.get_severity(v) == Severity::Warning)
-                })
+                .filter(|r| r.has_warnings())
                 .count();
 
             println!(
@@ -85,9 +77,12 @@ pub fn print_results(
                     result.commit.hash(),
                     result.commit.subject()
                 );
-                for failure in &result.failures {
-                    let severity = config.get_severity(failure);
-                    println!("    {} {}", severity_prefix(severity), failure);
+                for finding in &result.findings {
+                    println!(
+                        "    {} {}",
+                        severity_prefix(finding.severity),
+                        finding.validation
+                    );
                 }
             }
         }
@@ -98,7 +93,7 @@ pub fn print_results(
 mod tests {
     use super::*;
     use crate::commit::Commit;
-    use crate::validation::Validation;
+    use crate::validation::{Finding, Validation};
 
     fn create_test_commit(subject: &str) -> Commit {
         Commit {
@@ -128,7 +123,7 @@ mod tests {
         let commit = create_test_commit("fix");
         let results = vec![ValidationResult {
             commit: &commit,
-            failures: vec![Validation::ShortCommit],
+            findings: vec![Finding::new(Validation::ShortCommit, Severity::Warning)],
         }];
         let status = CommitMessageStatus::from_validation_results(&results, 10);
         assert!(matches!(status, CommitMessageStatus::NeedsWork));

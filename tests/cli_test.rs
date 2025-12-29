@@ -328,3 +328,79 @@ fn warnings_do_not_cause_nonzero_exit() {
         "Should exit zero when only warnings (no errors) found"
     );
 }
+
+#[test]
+fn disable_flag_accepted() {
+    // Use --disable to turn off validation checks
+    let output = run_binary_with_args(&["-l", "5", "--disable=ref,format"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Unknown validation"),
+        "Should accept --disable flag with multiple values, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn disable_flag_prevents_validation() {
+    // Disable reference checking - commits without refs should not trigger
+    let output = run_binary_with_args(&["-l", "5", "--disable=ref,format,vague,wip,imperative"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // With most validations disabled, should have fewer (or no) issues
+    assert!(
+        stdout.contains("Analyzed") || stdout.contains("adequately executed"),
+        "Should produce valid output with --disable, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn disable_flag_with_error_flag() {
+    // Disable some validations but make others errors
+    let output = run_binary_with_args(&[
+        "-l",
+        "5",
+        "-t",
+        "1000",
+        "--disable=ref,format,vague,wip,imperative",
+        "--error=short",
+    ]);
+    // Should fail because short is an error and threshold is very high
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero when short is error and threshold high"
+    );
+}
+
+#[test]
+fn disable_invalid_validation_fails() {
+    let output = run_binary_with_args(&["--disable=notavalidation"]);
+    assert!(
+        !output.status.success(),
+        "Should fail with invalid validation type in --disable"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Unknown validation"),
+        "Should show error for unknown validation type in --disable, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn disable_all_validations() {
+    // Disable all validation types
+    let output =
+        run_binary_with_args(&["-l", "5", "--disable=short,ref,format,vague,wip,imperative"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // With all validations disabled, should pass
+    assert!(
+        stdout.contains("adequately executed"),
+        "Should pass with all validations disabled, got: {}",
+        stdout
+    );
+    assert!(
+        output.status.success(),
+        "Should exit zero with all validations disabled"
+    );
+}

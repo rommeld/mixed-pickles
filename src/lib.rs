@@ -46,6 +46,10 @@ pub struct GitCLI {
     /// Validations to ignore (comma-separated)
     #[arg(long, value_name = "VALIDATIONS")]
     pub ignore: Option<String>,
+    /// Validations to disable entirely (comma-separated)
+    /// Unlike --ignore, this completely skips the validation check
+    #[arg(long, value_name = "VALIDATIONS")]
+    pub disable: Option<String>,
 }
 
 impl GitCLI {
@@ -53,6 +57,14 @@ impl GitCLI {
     pub fn build_config(&self) -> Result<ValidationConfig, CLIError> {
         let mut config = ValidationConfig::new();
 
+        // Apply disable first (turns off validation checks entirely)
+        if let Some(ref disables) = self.disable {
+            config
+                .parse_and_disable(disables)
+                .map_err(CLIError::InvalidValidation)?;
+        }
+
+        // Then apply severity overrides
         if let Some(ref errors) = self.error {
             config
                 .parse_and_set(errors, Severity::Error)
@@ -98,40 +110,29 @@ pub fn commit_analyzer(
     }
 
     let commits = git_fetch_commits(path, limit)?;
-    let validation_results = validate_commits(&commits, threshold);
+
+    // Build config with threshold
+    let mut validation_config = config.clone();
+    validation_config.threshold = threshold;
+
+    let validation_results = validate_commits(&commits, &validation_config);
     let analyzed_count = commits.len();
 
-    // Filter results to only include reported validations
-    let filtered_results: Vec<_> = validation_results
-        .into_iter()
-        .map(|mut result| {
-            result.failures.retain(|v| config.should_report(v));
-            result
-        })
-        .filter(|result| !result.failures.is_empty())
-        .collect();
-
     // Check if any errors exist
-    let has_errors = filtered_results
-        .iter()
-        .any(|r| r.failures.iter().any(|v| config.is_error(v)));
+    let has_errors = validation_results.iter().any(|r| r.has_errors());
 
-    if !quiet || !filtered_results.is_empty() {
+    if !quiet || !validation_results.is_empty() {
         print_results(
-            &filtered_results,
+            &validation_results,
             commits.len(),
             analyzed_count,
             threshold,
             &path.cloned(),
-            config,
         );
     }
 
     if has_errors {
-        let error_count = filtered_results
-            .iter()
-            .filter(|r| r.failures.iter().any(|v| config.is_error(v)))
-            .count();
+        let error_count = validation_results.iter().filter(|r| r.has_errors()).count();
         Err(CLIError::ValidationFailed(error_count))
     } else {
         Ok(())
@@ -166,11 +167,8 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 /// Args:
 ///     path: Path to the repository (default: current directory)
 ///     limit: Number of commits to analyze (default: all)
-///     threshold: Minimum message length in characters (default: 30)
 ///     quiet: Suppress output unless issues found (default: False)
-///     errors: Comma-separated validation types to treat as errors
-///     warnings: Comma-separated validation types to treat as warnings
-///     ignore: Comma-separated validation types to ignore
+///     config: ValidationConfig object for customizing validation behavior
 ///
 /// Returns:
 ///     None on success
@@ -178,37 +176,24 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 /// Raises:
 ///     RuntimeError: If validation issues are found or other errors occur
 #[pyfunction]
-#[pyo3(signature = (path=None, limit=None, threshold=30, quiet=false, errors=None, warnings=None, ignore=None))]
+#[pyo3(signature = (path=None, limit=None, quiet=false, config=None))]
 fn analyze_commits(
     path: Option<String>,
     limit: Option<usize>,
-    threshold: usize,
     quiet: bool,
-    errors: Option<String>,
-    warnings: Option<String>,
-    ignore: Option<String>,
+    config: Option<ValidationConfig>,
 ) -> PyResult<()> {
     let path_buf = path.map(PathBuf::from);
+    let validation_config = config.unwrap_or_default();
 
-    let mut config = ValidationConfig::new();
-    if let Some(ref e) = errors {
-        config
-            .parse_and_set(e, Severity::Error)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-    }
-    if let Some(ref w) = warnings {
-        config
-            .parse_and_set(w, Severity::Warning)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-    }
-    if let Some(ref i) = ignore {
-        config
-            .parse_and_set(i, Severity::Ignore)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-    }
-
-    commit_analyzer(path_buf.as_ref(), limit, threshold, quiet, &config)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    commit_analyzer(
+        path_buf.as_ref(),
+        limit,
+        validation_config.threshold,
+        quiet,
+        &validation_config,
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 /// CLI entry point for the commit analyzer.
@@ -260,4 +245,6 @@ mod mixed_pickles {
     use super::validation::Severity;
     #[pymodule_export]
     use super::validation::Validation;
+    #[pymodule_export]
+    use super::validation::ValidationConfig;
 }

@@ -2,10 +2,7 @@
 
 use pyo3::prelude::*;
 
-use crate::validation::{
-    Validation, has_conventional_format, has_reference, has_vague_language, is_non_imperative,
-    is_wip_commit,
-};
+use crate::validation::{Validation, ValidationConfig, validate_commit};
 
 /// A git commit with its metadata.
 #[pyclass]
@@ -57,40 +54,12 @@ impl Commit {
     ///     List of Validation types that failed for this commit.
     #[pyo3(signature = (threshold=30))]
     pub fn validate(&self, threshold: usize) -> Vec<Validation> {
-        self.validate_internal(threshold)
-    }
-}
-
-impl Commit {
-    /// Internal validation logic.
-    pub(crate) fn validate_internal(&self, threshold: usize) -> Vec<Validation> {
-        let mut failures = Vec::new();
-
-        if self.is_short(threshold) {
-            failures.push(Validation::ShortCommit);
-        }
-
-        if !has_reference(&self.subject) {
-            failures.push(Validation::MissingReference);
-        }
-
-        if !has_conventional_format(&self.subject) {
-            failures.push(Validation::InvalidFormat);
-        }
-
-        if has_vague_language(&self.subject) {
-            failures.push(Validation::VagueLanguage);
-        }
-
-        if is_wip_commit(&self.subject) {
-            failures.push(Validation::WipCommit);
-        }
-
-        if is_non_imperative(&self.subject) {
-            failures.push(Validation::NonImperative);
-        }
-
-        failures
+        let mut config = ValidationConfig::default();
+        config.threshold = threshold;
+        validate_commit(self, &config)
+            .into_iter()
+            .map(|f| f.validation)
+            .collect()
     }
 }
 

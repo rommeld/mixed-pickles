@@ -8,8 +8,6 @@ use std::sync::LazyLock;
 use pyo3::prelude::*;
 use regex::Regex;
 
-use crate::commit::Commit;
-
 /// Regex for issue/ticket references like #123, GH-456, JIRA-789, etc.
 static REFERENCE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(#\d+|gh-\d+|[A-Z]{2,}-\d+)").expect("Invalid reference regex")
@@ -62,16 +60,6 @@ pub enum Validation {
     /// Commit message doesn't use imperative mood.
     NonImperative,
 }
-
-/// All validation types for iteration.
-pub const ALL_VALIDATIONS: [Validation; 6] = [
-    Validation::ShortCommit,
-    Validation::MissingReference,
-    Validation::InvalidFormat,
-    Validation::VagueLanguage,
-    Validation::WipCommit,
-    Validation::NonImperative,
-];
 
 impl Validation {
     /// Returns the validation name as a string (for CLI parsing).
@@ -149,10 +137,49 @@ impl fmt::Display for Severity {
     }
 }
 
-/// Configuration for validation severity levels.
+/// A validation finding with its severity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Finding {
+    pub validation: Validation,
+    pub severity: Severity,
+}
+
+impl Finding {
+    pub fn new(validation: Validation, severity: Severity) -> Self {
+        Self {
+            validation,
+            severity,
+        }
+    }
+}
+
+/// Configuration for validation behavior.
+///
+/// Controls which validations are enabled and their severity levels.
+/// Users who don't use conventional commits can disable format checking.
+/// Users whose projects don't use issue references can disable that check.
+#[pyclass]
 #[derive(Debug, Clone)]
 pub struct ValidationConfig {
     severities: HashMap<Validation, Severity>,
+    /// Minimum commit message length (characters).
+    #[pyo3(get, set)]
+    pub threshold: usize,
+    /// Whether to require issue references (e.g., #123).
+    #[pyo3(get, set)]
+    pub require_issue_ref: bool,
+    /// Whether to require conventional commit format.
+    #[pyo3(get, set)]
+    pub require_conventional_format: bool,
+    /// Whether to check for vague language.
+    #[pyo3(get, set)]
+    pub check_vague_language: bool,
+    /// Whether to check for WIP commits.
+    #[pyo3(get, set)]
+    pub check_wip: bool,
+    /// Whether to check for imperative mood.
+    #[pyo3(get, set)]
+    pub check_imperative: bool,
 }
 
 impl Default for ValidationConfig {
@@ -165,7 +192,16 @@ impl Default for ValidationConfig {
         severities.insert(Validation::NonImperative, Severity::Warning);
         severities.insert(Validation::MissingReference, Severity::Info);
         severities.insert(Validation::InvalidFormat, Severity::Info);
-        Self { severities }
+        Self {
+            severities,
+            threshold: 30,
+            // Sensible defaults: most projects benefit from these checks
+            require_issue_ref: true,
+            require_conventional_format: true,
+            check_vague_language: true,
+            check_wip: true,
+            check_imperative: true,
+        }
     }
 }
 
@@ -175,9 +211,61 @@ impl ValidationConfig {
         Self::default()
     }
 
-    /// Set the severity for a specific validation type.
-    pub fn set_severity(&mut self, validation: Validation, severity: Severity) {
+    /// Create a configuration with a specific threshold.
+    pub fn with_threshold(threshold: usize) -> Self {
+        Self {
+            threshold,
+            ..Default::default()
+        }
+    }
+
+    /// Builder method to set threshold.
+    #[must_use]
+    pub fn threshold(mut self, threshold: usize) -> Self {
+        self.threshold = threshold;
+        self
+    }
+
+    /// Builder method to set require_issue_ref.
+    #[must_use]
+    pub fn require_issue_ref(mut self, require: bool) -> Self {
+        self.require_issue_ref = require;
+        self
+    }
+
+    /// Builder method to set require_conventional_format.
+    #[must_use]
+    pub fn require_conventional_format(mut self, require: bool) -> Self {
+        self.require_conventional_format = require;
+        self
+    }
+
+    /// Builder method to set check_vague_language.
+    #[must_use]
+    pub fn check_vague_language(mut self, check: bool) -> Self {
+        self.check_vague_language = check;
+        self
+    }
+
+    /// Builder method to set check_wip.
+    #[must_use]
+    pub fn check_wip(mut self, check: bool) -> Self {
+        self.check_wip = check;
+        self
+    }
+
+    /// Builder method to set check_imperative.
+    #[must_use]
+    pub fn check_imperative(mut self, check: bool) -> Self {
+        self.check_imperative = check;
+        self
+    }
+
+    /// Builder method to set severity for a validation type.
+    #[must_use]
+    pub fn severity(mut self, validation: Validation, severity: Severity) -> Self {
         self.severities.insert(validation, severity);
+        self
     }
 
     /// Get the severity for a validation type.
@@ -206,9 +294,103 @@ impl ValidationConfig {
                 continue;
             }
             let validation = Validation::from_str(name)?;
-            self.set_severity(validation, severity);
+            self.severities.insert(validation, severity);
         }
         Ok(())
+    }
+
+    /// Parse a comma-separated list of validation names to disable.
+    pub fn parse_and_disable(&mut self, validations: &str) -> Result<(), String> {
+        for name in validations.split(',') {
+            let name = name.trim();
+            if name.is_empty() {
+                continue;
+            }
+            match name.to_lowercase().as_str() {
+                "shortcommit" | "short" => self.threshold = 0,
+                "missingreference" | "reference" | "ref" => self.require_issue_ref = false,
+                "invalidformat" | "format" => self.require_conventional_format = false,
+                "vaguelanguage" | "vague" => self.check_vague_language = false,
+                "wipcommit" | "wip" => self.check_wip = false,
+                "nonimperative" | "imperative" => self.check_imperative = false,
+                _ => return Err(format!("Unknown validation type: {}", name)),
+            }
+        }
+        Ok(())
+    }
+}
+
+#[pymethods]
+impl ValidationConfig {
+    /// Create a new ValidationConfig with default settings.
+    ///
+    /// Args:
+    ///     threshold: Minimum message length in characters (default: 30)
+    ///     require_issue_ref: Check for issue references like #123 (default: True)
+    ///     require_conventional_format: Check for conventional commit format (default: True)
+    ///     check_vague_language: Check for vague descriptions (default: True)
+    ///     check_wip: Check for WIP/fixup commits (default: True)
+    ///     check_imperative: Check for imperative mood (default: True)
+    #[new]
+    #[pyo3(signature = (
+        threshold=30,
+        require_issue_ref=true,
+        require_conventional_format=true,
+        check_vague_language=true,
+        check_wip=true,
+        check_imperative=true
+    ))]
+    fn py_new(
+        threshold: usize,
+        require_issue_ref: bool,
+        require_conventional_format: bool,
+        check_vague_language: bool,
+        check_wip: bool,
+        check_imperative: bool,
+    ) -> Self {
+        Self {
+            threshold,
+            require_issue_ref,
+            require_conventional_format,
+            check_vague_language,
+            check_wip,
+            check_imperative,
+            ..Default::default()
+        }
+    }
+
+    /// Set the severity level for a validation type.
+    ///
+    /// Args:
+    ///     validation: The validation type to configure
+    ///     severity: The severity level (Error, Warning, Info, Ignore)
+    #[pyo3(name = "set_severity")]
+    fn py_set_severity(&mut self, validation: Validation, severity: Severity) {
+        self.severities.insert(validation, severity);
+    }
+
+    /// Get the severity level for a validation type.
+    ///
+    /// Args:
+    ///     validation: The validation type to query
+    ///
+    /// Returns:
+    ///     The severity level for the validation
+    #[pyo3(name = "get_severity")]
+    fn py_get_severity(&self, validation: Validation) -> Severity {
+        self.get_severity(&validation)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "ValidationConfig(threshold={}, require_issue_ref={}, require_conventional_format={}, check_vague_language={}, check_wip={}, check_imperative={})",
+            self.threshold,
+            self.require_issue_ref,
+            self.require_conventional_format,
+            self.check_vague_language,
+            self.check_wip,
+            self.check_imperative
+        )
     }
 }
 
@@ -283,22 +465,158 @@ pub fn is_non_imperative(subject: &str) -> bool {
     NON_IMPERATIVE_REGEX.is_match(subject)
 }
 
-/// A commit paired with its validation failures.
+/// Check if a commit is too short.
+fn check_short(subject: &str, config: &ValidationConfig) -> Option<Finding> {
+    if subject.len() <= config.threshold {
+        let severity = config.get_severity(&Validation::ShortCommit);
+        if severity != Severity::Ignore {
+            return Some(Finding::new(Validation::ShortCommit, severity));
+        }
+    }
+    None
+}
+
+/// Check if a commit is missing an issue reference.
+fn check_issue_reference(subject: &str, config: &ValidationConfig) -> Option<Finding> {
+    if !has_reference(subject) {
+        let severity = config.get_severity(&Validation::MissingReference);
+        if severity != Severity::Ignore {
+            return Some(Finding::new(Validation::MissingReference, severity));
+        }
+    }
+    None
+}
+
+/// Check if a commit follows conventional format.
+fn check_conventional_format(subject: &str, config: &ValidationConfig) -> Option<Finding> {
+    if !has_conventional_format(subject) {
+        let severity = config.get_severity(&Validation::InvalidFormat);
+        if severity != Severity::Ignore {
+            return Some(Finding::new(Validation::InvalidFormat, severity));
+        }
+    }
+    None
+}
+
+/// Check if a commit uses vague language.
+fn check_vague(subject: &str, config: &ValidationConfig) -> Option<Finding> {
+    if has_vague_language(subject) {
+        let severity = config.get_severity(&Validation::VagueLanguage);
+        if severity != Severity::Ignore {
+            return Some(Finding::new(Validation::VagueLanguage, severity));
+        }
+    }
+    None
+}
+
+/// Check if a commit is a work-in-progress.
+fn check_wip(subject: &str, config: &ValidationConfig) -> Option<Finding> {
+    if is_wip_commit(subject) {
+        let severity = config.get_severity(&Validation::WipCommit);
+        if severity != Severity::Ignore {
+            return Some(Finding::new(Validation::WipCommit, severity));
+        }
+    }
+    None
+}
+
+/// Check if a commit uses non-imperative mood.
+fn check_imperative(subject: &str, config: &ValidationConfig) -> Option<Finding> {
+    if is_non_imperative(subject) {
+        let severity = config.get_severity(&Validation::NonImperative);
+        if severity != Severity::Ignore {
+            return Some(Finding::new(Validation::NonImperative, severity));
+        }
+    }
+    None
+}
+
+use crate::commit::Commit;
+
+/// Validate a commit against all enabled validations.
+///
+/// Returns a list of findings based on the configuration.
+/// Only enabled validations are run, and only non-ignored findings are returned.
+pub fn validate_commit(commit: &Commit, config: &ValidationConfig) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let subject = &commit.subject;
+
+    // Always check for short commits (controlled by threshold)
+    if let Some(f) = check_short(subject, config) {
+        findings.push(f);
+    }
+
+    // Check for WIP commits
+    if config.check_wip
+        && let Some(f) = check_wip(subject, config)
+    {
+        findings.push(f);
+    }
+
+    // Check for issue references
+    if config.require_issue_ref
+        && let Some(f) = check_issue_reference(subject, config)
+    {
+        findings.push(f);
+    }
+
+    // Check for conventional format
+    if config.require_conventional_format
+        && let Some(f) = check_conventional_format(subject, config)
+    {
+        findings.push(f);
+    }
+
+    // Check for vague language
+    if config.check_vague_language
+        && let Some(f) = check_vague(subject, config)
+    {
+        findings.push(f);
+    }
+
+    // Check for imperative mood
+    if config.check_imperative
+        && let Some(f) = check_imperative(subject, config)
+    {
+        findings.push(f);
+    }
+
+    findings
+}
+
+/// A commit paired with its validation findings.
 #[derive(Debug)]
 pub struct ValidationResult<'a> {
     pub commit: &'a Commit,
-    pub failures: Vec<Validation>,
+    pub findings: Vec<Finding>,
 }
 
-/// Validate all commits and return only those with failures.
-pub fn validate_commits(commits: &[Commit], threshold: usize) -> Vec<ValidationResult<'_>> {
+impl<'a> ValidationResult<'a> {
+    /// Check if any finding is an error.
+    pub fn has_errors(&self) -> bool {
+        self.findings.iter().any(|f| f.severity == Severity::Error)
+    }
+
+    /// Check if any finding is a warning.
+    pub fn has_warnings(&self) -> bool {
+        self.findings
+            .iter()
+            .any(|f| f.severity == Severity::Warning)
+    }
+}
+
+/// Validate all commits and return only those with findings.
+pub fn validate_commits<'a>(
+    commits: &'a [Commit],
+    config: &ValidationConfig,
+) -> Vec<ValidationResult<'a>> {
     commits
         .iter()
         .map(|commit| ValidationResult {
             commit,
-            failures: commit.validate_internal(threshold),
+            findings: validate_commit(commit, config),
         })
-        .filter(|result| !result.failures.is_empty())
+        .filter(|result| !result.findings.is_empty())
         .collect()
 }
 
@@ -661,55 +979,69 @@ mod tests {
             }
         }
 
+        fn config_with_threshold(threshold: usize) -> ValidationConfig {
+            ValidationConfig::with_threshold(threshold)
+        }
+
+        fn has_validation(result: &ValidationResult, validation: Validation) -> bool {
+            result.findings.iter().any(|f| f.validation == validation)
+        }
+
         #[test]
         fn valid_commit_passes_all_validations() {
             let commits = vec![create_valid_commit(
                 "feat: add new feature for user authentication #123",
             )];
-            let results = validate_commits(&commits, 10);
+            let config = config_with_threshold(10);
+            let results = validate_commits(&commits, &config);
             assert!(results.is_empty(), "Expected no failures for valid commit");
         }
 
         #[test]
         fn commit_missing_reference_fails() {
             let commits = vec![create_valid_commit("feat: add new feature")];
-            let results = validate_commits(&commits, 10);
+            let config = config_with_threshold(10);
+            let results = validate_commits(&commits, &config);
             assert_eq!(results.len(), 1);
-            assert!(results[0].failures.contains(&Validation::MissingReference));
+            assert!(has_validation(&results[0], Validation::MissingReference));
         }
 
         #[test]
         fn commit_with_invalid_format_fails() {
             let commits = vec![create_valid_commit("add new feature #123")];
-            let results = validate_commits(&commits, 10);
+            let config = config_with_threshold(10);
+            let results = validate_commits(&commits, &config);
             assert_eq!(results.len(), 1);
-            assert!(results[0].failures.contains(&Validation::InvalidFormat));
+            assert!(has_validation(&results[0], Validation::InvalidFormat));
         }
 
         #[test]
         fn short_commit_fails() {
             let commits = vec![create_valid_commit("feat: x #1")];
-            let results = validate_commits(&commits, 20);
+            let config = config_with_threshold(20);
+            let results = validate_commits(&commits, &config);
             assert_eq!(results.len(), 1);
-            assert!(results[0].failures.contains(&Validation::ShortCommit));
+            assert!(has_validation(&results[0], Validation::ShortCommit));
         }
 
         #[test]
         fn commit_can_have_multiple_failures() {
             let commits = vec![create_valid_commit("bad")];
-            let results = validate_commits(&commits, 10);
+            let config = config_with_threshold(10);
+            let results = validate_commits(&commits, &config);
             assert_eq!(results.len(), 1);
-            assert!(results[0].failures.contains(&Validation::ShortCommit));
-            assert!(results[0].failures.contains(&Validation::MissingReference));
-            assert!(results[0].failures.contains(&Validation::InvalidFormat));
+            assert!(has_validation(&results[0], Validation::ShortCommit));
+            assert!(has_validation(&results[0], Validation::MissingReference));
+            assert!(has_validation(&results[0], Validation::InvalidFormat));
         }
 
         #[test]
         fn commit_with_vague_language_fails() {
             let commits = vec![create_valid_commit("feat: fix bug #123")];
-            let results = validate_commits(&commits, 10);
+            let config = config_with_threshold(10);
+            let results = validate_commits(&commits, &config);
             assert_eq!(results.len(), 1);
-            assert!(results[0].failures.contains(&Validation::VagueLanguage));
+            assert!(has_validation(&results[0], Validation::VagueLanguage));
         }
 
         #[test]
@@ -717,17 +1049,159 @@ mod tests {
             let commits = vec![create_valid_commit(
                 "WIP: feat: add user authentication #123",
             )];
-            let results = validate_commits(&commits, 10);
+            let config = config_with_threshold(10);
+            let results = validate_commits(&commits, &config);
             assert_eq!(results.len(), 1);
-            assert!(results[0].failures.contains(&Validation::WipCommit));
+            assert!(has_validation(&results[0], Validation::WipCommit));
         }
 
         #[test]
         fn non_imperative_commit_fails() {
             let commits = vec![create_valid_commit("feat: Added user authentication #123")];
-            let results = validate_commits(&commits, 10);
+            let config = config_with_threshold(10);
+            let results = validate_commits(&commits, &config);
             assert_eq!(results.len(), 1);
-            assert!(results[0].failures.contains(&Validation::NonImperative));
+            assert!(has_validation(&results[0], Validation::NonImperative));
+        }
+    }
+
+    mod validate_commit_tests {
+        use super::*;
+
+        fn create_commit(subject: &str) -> Commit {
+            Commit {
+                hash: "abc123".to_string(),
+                author_name: "Test".to_string(),
+                author_email: "test@example.com".to_string(),
+                subject: subject.to_string(),
+            }
+        }
+
+        #[test]
+        fn valid_commit_returns_no_findings() {
+            let commit = create_commit("feat: add user authentication #123");
+            let config = ValidationConfig::default();
+            let findings = validate_commit(&commit, &config);
+            assert!(findings.is_empty());
+        }
+
+        #[test]
+        fn respects_threshold_config() {
+            let commit = create_commit("feat: add user authentication #123");
+            let config = ValidationConfig::default().threshold(100); // Very high threshold
+            let findings = validate_commit(&commit, &config);
+            assert!(
+                findings
+                    .iter()
+                    .any(|f| f.validation == Validation::ShortCommit)
+            );
+        }
+
+        #[test]
+        fn disabled_issue_ref_check_skips_validation() {
+            let commit = create_commit("feat: add feature without reference");
+            let config = ValidationConfig::default().require_issue_ref(false);
+            let findings = validate_commit(&commit, &config);
+            assert!(
+                !findings
+                    .iter()
+                    .any(|f| f.validation == Validation::MissingReference)
+            );
+        }
+
+        #[test]
+        fn disabled_conventional_format_skips_validation() {
+            let commit = create_commit("add feature without conventional format #123");
+            let config = ValidationConfig::default().require_conventional_format(false);
+            let findings = validate_commit(&commit, &config);
+            assert!(
+                !findings
+                    .iter()
+                    .any(|f| f.validation == Validation::InvalidFormat)
+            );
+        }
+
+        #[test]
+        fn disabled_vague_language_skips_validation() {
+            let commit = create_commit("feat: fix bug #123");
+            let config = ValidationConfig::default().check_vague_language(false);
+            let findings = validate_commit(&commit, &config);
+            assert!(
+                !findings
+                    .iter()
+                    .any(|f| f.validation == Validation::VagueLanguage)
+            );
+        }
+
+        #[test]
+        fn disabled_wip_check_skips_validation() {
+            let commit = create_commit("WIP: feat: add feature #123");
+            let config = ValidationConfig::default().check_wip(false);
+            let findings = validate_commit(&commit, &config);
+            assert!(
+                !findings
+                    .iter()
+                    .any(|f| f.validation == Validation::WipCommit)
+            );
+        }
+
+        #[test]
+        fn disabled_imperative_check_skips_validation() {
+            let commit = create_commit("feat: Added new feature #123");
+            let config = ValidationConfig::default().check_imperative(false);
+            let findings = validate_commit(&commit, &config);
+            assert!(
+                !findings
+                    .iter()
+                    .any(|f| f.validation == Validation::NonImperative)
+            );
+        }
+
+        #[test]
+        fn findings_include_correct_severity() {
+            let commit = create_commit("WIP");
+            let config = ValidationConfig::default();
+            let findings = validate_commit(&commit, &config);
+
+            // WIP should be Error severity by default
+            let wip_finding = findings
+                .iter()
+                .find(|f| f.validation == Validation::WipCommit);
+            assert!(wip_finding.is_some());
+            assert_eq!(wip_finding.unwrap().severity, Severity::Error);
+
+            // ShortCommit should be Warning severity by default
+            let short_finding = findings
+                .iter()
+                .find(|f| f.validation == Validation::ShortCommit);
+            assert!(short_finding.is_some());
+            assert_eq!(short_finding.unwrap().severity, Severity::Warning);
+        }
+
+        #[test]
+        fn ignored_severity_excludes_finding() {
+            let commit = create_commit("feat: add feature"); // Missing reference
+            let config = ValidationConfig::default()
+                .severity(Validation::MissingReference, Severity::Ignore);
+            let findings = validate_commit(&commit, &config);
+            assert!(
+                !findings
+                    .iter()
+                    .any(|f| f.validation == Validation::MissingReference)
+            );
+        }
+
+        #[test]
+        fn custom_severity_is_reflected_in_finding() {
+            let commit = create_commit("feat: add feature"); // Missing reference
+            let config =
+                ValidationConfig::default().severity(Validation::MissingReference, Severity::Error);
+            let findings = validate_commit(&commit, &config);
+            let finding = findings
+                .iter()
+                .find(|f| f.validation == Validation::MissingReference);
+            assert!(finding.is_some());
+            assert_eq!(finding.unwrap().severity, Severity::Error);
         }
     }
 }
