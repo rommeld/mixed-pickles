@@ -1,20 +1,10 @@
 //! Commit parsing and validation;
+use crate::error::CLIError;
 use pyo3::prelude::*;
-use regex::Regex;
 use std::{
     path::{Path, PathBuf},
     process::Command,
-    sync::LazyLock,
 };
-
-use crate::error::CLIError;
-
-static GIT_HASH_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[0-9a-f]{40}$").expect("Invalid regex pattern"));
-
-fn is_valid_git_hash(hash: &str) -> bool {
-    GIT_HASH_REGEX.is_match(hash)
-}
 
 /// A git commit with its metadata.
 #[pyclass]
@@ -62,10 +52,10 @@ impl Commit {
 enum Validation {
     ShortCommit,
     MissingReference,
-    VagueLanguage,
-    CommitFormat,
-    WipCommit,
-    NonImperative,
+    // VagueLanguage,
+    // CommitFormat,
+    // WipCommit,
+    // NonImperative,
 }
 
 impl Commit {
@@ -102,7 +92,7 @@ impl Commit {
             let parts: Vec<&str> = line.splitn(4, '|').collect();
 
             match parts.as_slice() {
-                [hash, author_name, author_email, subject] if is_valid_git_hash(hash) => {
+                [hash, author_name, author_email, subject] => {
                     let commit = Commit {
                         hash: hash.to_string(),
                         author_name: author_name.to_string(),
@@ -110,9 +100,6 @@ impl Commit {
                         subject: subject.to_string(),
                     };
                     commits.push(commit);
-                }
-                [hash, _, _, _] => {
-                    eprintln!("Warning: Invalid git hash format: {}", hash);
                 }
                 _ => {
                     eprintln!("Warning: Could not parse commit line");
@@ -196,64 +183,6 @@ pub fn print_results(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod git_hash_validation {
-        use super::*;
-
-        #[test]
-        fn valid_40_char_lowercase_hex_hash() {
-            let hash = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
-            assert!(is_valid_git_hash(hash));
-        }
-
-        #[test]
-        fn valid_hash_all_digits() {
-            let hash = "1234567890123456789012345678901234567890";
-            assert!(is_valid_git_hash(hash));
-        }
-
-        #[test]
-        fn valid_hash_all_letters() {
-            let hash = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
-            assert!(is_valid_git_hash(hash));
-        }
-
-        #[test]
-        fn invalid_hash_too_short() {
-            let hash = "a1b2c3d4e5f6";
-            assert!(!is_valid_git_hash(hash));
-        }
-
-        #[test]
-        fn invalid_hash_too_long() {
-            let hash = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3";
-            assert!(!is_valid_git_hash(hash));
-        }
-
-        #[test]
-        fn invalid_hash_uppercase_letters() {
-            let hash = "A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2";
-            assert!(!is_valid_git_hash(hash));
-        }
-
-        #[test]
-        fn invalid_hash_special_characters() {
-            let hash = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b!";
-            assert!(!is_valid_git_hash(hash));
-        }
-
-        #[test]
-        fn invalid_hash_empty_string() {
-            let hash = "";
-            assert!(!is_valid_git_hash(hash));
-        }
-
-        #[test]
-        fn invalid_hash_with_spaces() {
-            let hash = "a1b2c3d4 5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
-            assert!(!is_valid_git_hash(hash));
-        }
-    }
 
     mod commit_struct {
         use super::*;
