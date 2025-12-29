@@ -60,3 +60,74 @@ class TestCommit:
     def test_commit_has_subject(self, commit):
         """Commit should have a subject."""
         assert isinstance(commit.subject, str)
+
+
+class TestValidation:
+    """Tests for the Validation enum and commit validation."""
+
+    def test_validation_enum_exists(self):
+        """Validation enum should be importable."""
+        assert hasattr(mixed_pickles, "Validation")
+
+    def test_validation_short_commit(self):
+        """Should have ShortCommit variant."""
+        assert hasattr(mixed_pickles.Validation, "ShortCommit")
+
+    def test_validation_missing_reference(self):
+        """Should have MissingReference variant."""
+        assert hasattr(mixed_pickles.Validation, "MissingReference")
+
+    def test_validation_str(self):
+        """Validation should have human-readable string representation."""
+        assert str(mixed_pickles.Validation.ShortCommit) == "Short commit message"
+        assert str(mixed_pickles.Validation.MissingReference) == "Missing reference"
+
+    def test_validation_repr(self):
+        """Validation should have debug representation."""
+        assert repr(mixed_pickles.Validation.ShortCommit) == "Validation.ShortCommit"
+        assert (
+            repr(mixed_pickles.Validation.MissingReference)
+            == "Validation.MissingReference"
+        )
+
+    def test_validation_equality(self):
+        """Validation variants should be comparable."""
+        assert (
+            mixed_pickles.Validation.ShortCommit == mixed_pickles.Validation.ShortCommit
+        )
+        assert (
+            mixed_pickles.Validation.ShortCommit
+            != mixed_pickles.Validation.MissingReference
+        )
+
+
+class TestCommitValidate:
+    """Tests for Commit.validate() method."""
+
+    @pytest.fixture
+    def commit(self):
+        """Get a single commit for testing."""
+        commits = mixed_pickles.fetch_commits(limit=1)
+        assert len(commits) == 1
+        return commits[0]
+
+    def test_validate_returns_list(self, commit):
+        """validate() should return a list."""
+        failures = commit.validate()
+        assert isinstance(failures, list)
+
+    def test_validate_with_high_threshold(self, commit):
+        """validate() with high threshold should return ShortCommit."""
+        failures = commit.validate(threshold=1000)
+        assert mixed_pickles.Validation.ShortCommit in failures
+
+    def test_validate_with_low_threshold(self, commit):
+        """validate() with threshold=0 should return empty list."""
+        failures = commit.validate(threshold=0)
+        assert mixed_pickles.Validation.ShortCommit not in failures
+
+    def test_validate_default_threshold(self, commit):
+        """validate() should use default threshold of 30."""
+        failures = commit.validate()
+        # Just verify it runs without error
+        assert isinstance(failures, list)

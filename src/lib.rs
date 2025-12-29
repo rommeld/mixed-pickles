@@ -1,12 +1,22 @@
+//! Mixed Pickles - Git commit analyzer with Python bindings.
+
 mod commit;
 pub mod error;
+mod git;
+mod output;
+mod validation;
 
 use std::path::PathBuf;
 
 use clap::Parser;
-use commit::{Commit, print_results, validate_repo_path};
 use error::CLIError;
+use git::{fetch_commits as git_fetch_commits, validate_repo_path};
+use output::print_results;
 use pyo3::prelude::*;
+use validation::validate_commits;
+
+pub use commit::Commit;
+pub use validation::Validation;
 
 /// CLI arguments for the commit analyzer.
 #[derive(Parser, Debug)]
@@ -34,6 +44,7 @@ impl GitCLI {
     }
 }
 
+/// Core commit analysis logic.
 pub fn commit_analyzer(
     path: Option<&PathBuf>,
     limit: Option<usize>,
@@ -44,13 +55,13 @@ pub fn commit_analyzer(
         validate_repo_path(p)?;
     }
 
-    let commits = Commit::fetch_all(path, limit)?;
-    let short_commits = Commit::find_short(&commits, threshold);
+    let commits = git_fetch_commits(path, limit)?;
+    let validation_results = validate_commits(&commits, threshold);
     let analyzed_count = commits.len();
 
-    if !quiet || !short_commits.is_empty() {
+    if !quiet || !validation_results.is_empty() {
         print_results(
-            &short_commits,
+            &validation_results,
             commits.len(),
             analyzed_count,
             threshold,
@@ -58,10 +69,10 @@ pub fn commit_analyzer(
         );
     }
 
-    if short_commits.is_empty() {
+    if validation_results.is_empty() {
         Ok(())
     } else {
-        Err(CLIError::ShortCommitsFound(short_commits.len()))
+        Err(CLIError::ValidationFailed(validation_results.len()))
     }
 }
 
@@ -84,7 +95,7 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
         validate_repo_path(p)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
     }
-    Commit::fetch_all(path_buf.as_ref(), limit)
+    git_fetch_commits(path_buf.as_ref(), limit)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
@@ -100,7 +111,7 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 ///     None on success
 ///
 /// Raises:
-///     RuntimeError: If short commits are found or other errors occur
+///     RuntimeError: If validation issues are found or other errors occur
 #[pyfunction]
 #[pyo3(signature = (path=None, limit=None, threshold=30, quiet=false))]
 fn analyze_commits(
@@ -118,7 +129,7 @@ fn analyze_commits(
 ///
 /// Parses command-line arguments and runs the analysis.
 /// This function is called when running `mixed-pickles` from the command line.
-/// Exits with code 1 if short commits are found, 0 otherwise.
+/// Exits with code 1 if validation issues are found, 0 otherwise.
 #[pyfunction]
 fn main(py: Python<'_>) {
     // Get sys.argv from Python for correct argument parsing
@@ -139,7 +150,7 @@ fn main(py: Python<'_>) {
 
     match cli.run() {
         Ok(()) => {}
-        Err(CLIError::ShortCommitsFound(_)) => {
+        Err(CLIError::ValidationFailed(_)) => {
             std::process::exit(1);
         }
         Err(e) => {
@@ -159,4 +170,6 @@ mod mixed_pickles {
     use super::fetch_commits;
     #[pymodule_export]
     use super::main;
+    #[pymodule_export]
+    use super::validation::Validation;
 }

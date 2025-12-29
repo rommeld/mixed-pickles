@@ -23,13 +23,13 @@ class TestAnalyzeCommits:
         mixed_pickles.analyze_commits(limit=0)
 
     def test_raises_when_short_commits_found(self):
-        """Should raise RuntimeError when short commits are found."""
-        with pytest.raises(RuntimeError, match="short messages"):
+        """Should raise RuntimeError when validation issues are found."""
+        with pytest.raises(RuntimeError, match="validation issues"):
             mixed_pickles.analyze_commits(threshold=1000)
 
     def test_raises_with_quiet_when_issues_found(self):
         """Should still raise even in quiet mode when issues found."""
-        with pytest.raises(RuntimeError, match="short messages"):
+        with pytest.raises(RuntimeError, match="validation issues"):
             mixed_pickles.analyze_commits(threshold=1000, quiet=True)
 
     def test_with_limit_and_threshold(self):

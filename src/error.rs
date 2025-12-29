@@ -15,6 +15,6 @@ pub enum CLIError {
     NoCommitsFound,
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
-    #[error("Found {0} commits with short messages")]
-    ShortCommitsFound(usize),
+    #[error("Found {0} commits with validation issues")]
+    ValidationFailed(usize),
 }

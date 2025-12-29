@@ -41,8 +41,8 @@ fn short_commits_found_exits_nonzero() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("short messages"),
-        "Should show short commits, got: {}",
+        stdout.contains("commits with issues"),
+        "Should show commits with issues, got: {}",
         stdout
     );
 }
@@ -64,7 +64,7 @@ fn threshold_flag_changes_character_limit() {
     let output = run_binary_with_args(&["--threshold", "1000", "-l", "3"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("< 1000 chars"),
+        stdout.contains("threshold: 1000 chars"),
         "Should show threshold of 1000, got: {}",
         stdout
     );
@@ -121,7 +121,7 @@ fn quiet_flag_shows_output_on_failure() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("short messages"),
+        stdout.contains("commits with issues"),
         "Should show output in quiet mode when issues found, got: {}",
         stdout
     );

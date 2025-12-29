@@ -51,15 +51,6 @@ fn subject_length_check() {
 }
 
 #[test]
-fn hash_truncation_to_seven_chars() {
-    let full_hash = "abc1234567890def";
-    let truncated = &full_hash[..7];
-
-    assert_eq!(truncated, "abc1234");
-    assert_eq!(truncated.len(), 7);
-}
-
-#[test]
 fn empty_subject_has_zero_length() {
     let empty_subject = "";
     assert_eq!(empty_subject.len(), 0);
