@@ -40,7 +40,7 @@ fn short_commits_found_exits_nonzero() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("commits with issues"),
+        stdout.contains("commit with issues") || stdout.contains("commits with issues"),
         "Should show commits with issues, got: {}",
         stdout
     );
@@ -128,7 +128,7 @@ fn quiet_flag_with_issues() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("commits with issues"),
+        stdout.contains("commit with issues") || stdout.contains("commits with issues"),
         "Should show output in quiet mode when issues found, got: {}",
         stdout
     );
@@ -318,7 +318,9 @@ fn warnings_do_not_cause_nonzero_exit() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Should show commits with issues (warnings)
     assert!(
-        stdout.contains("commits with issues") || stdout.contains("adequately executed"),
+        stdout.contains("commit with issues")
+            || stdout.contains("commits with issues")
+            || stdout.contains("adequately executed"),
         "Should produce output, got: {}",
         stdout
     );
@@ -434,7 +436,7 @@ fn strict_flag_exits_nonzero_on_warnings() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Should show warnings
     assert!(
-        stdout.contains("commits with issues"),
+        stdout.contains("commit with issues") || stdout.contains("commits with issues"),
         "Should show commits with issues, got: {}",
         stdout
     );
@@ -461,7 +463,7 @@ fn without_strict_warnings_exit_zero() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Should show warnings
     assert!(
-        stdout.contains("commits with issues"),
+        stdout.contains("commit with issues") || stdout.contains("commits with issues"),
         "Should show commits with issues, got: {}",
         stdout
     );
