@@ -6,6 +6,7 @@ build-backend = "maturin"
 name = "mixed-pickles"
 requires-python = ">=3.9"
 dynamic = ["version"]
+license = "MIT"
 
 [project.scripts]
 mixed-pickles = "mixed_pickles:main"
