@@ -1,4 +1,4 @@
-//! Commit struct and Python bindings.
+//! Commit struct.
 
 use pyo3::prelude::*;
 
@@ -16,42 +16,34 @@ pub struct Commit {
 
 #[pymethods]
 impl Commit {
-    /// The commit hash.
     #[getter]
     pub fn hash(&self) -> &str {
         &self.hash
     }
 
-    /// The commit author's name.
     #[getter]
     pub fn author_name(&self) -> &str {
         &self.author_name
     }
 
-    /// The commit author's email address.
     #[getter]
     pub fn author_email(&self) -> &str {
         &self.author_email
     }
 
-    /// The commit message subject line.
     #[getter]
     pub fn subject(&self) -> &str {
         &self.subject
     }
 
-    /// Check if this commit's subject is shorter than the threshold.
     pub fn is_short(&self, threshold: usize) -> bool {
         self.subject.len() <= threshold
     }
 
-    /// Validate this commit against all validation rules.
-    ///
-    /// Args:
-    ///     threshold: Minimum message length in characters (default: 30)
+    /// Validate this commit against all rules.
     ///
     /// Returns:
-    ///     List of Validation types that failed for this commit.
+    ///     List of Validation types that failed.
     #[pyo3(signature = (threshold=30))]
     pub fn validate(&self, threshold: usize) -> Vec<Validation> {
         let mut config = ValidationConfig::default();

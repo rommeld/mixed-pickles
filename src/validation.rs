@@ -8,37 +8,26 @@ use std::sync::LazyLock;
 use pyo3::prelude::*;
 use regex::Regex;
 
-/// Regex for issue/ticket references like #123, GH-456, JIRA-789, etc.
 static REFERENCE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(#\d+|gh-\d+|[A-Z]{2,}-\d+)").expect("Invalid reference regex")
 });
 
-/// Regex for conventional commit format: type(scope)?: description
-/// Supports: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
 static CONVENTIONAL_COMMIT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?:\s.+")
         .expect("Invalid conventional commit regex")
 });
 
-/// Regex for vague language patterns in commit messages.
-/// Matches descriptions that are too generic like "fix bug", "update code", "change stuff".
 static VAGUE_LANGUAGE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(fix(ed|es|ing)?|update[ds]?|change[ds]?|modify|modified|modifies|tweak(ed|s)?|adjust(ed|s)?)\s+(it|this|that|things?|stuff|code|bug|issue|error|problem)s?\b")
         .expect("Invalid vague language regex")
 });
 
-/// Regex for WIP (work-in-progress) commit patterns.
-/// Matches commits that shouldn't be in final history like "WIP", "fixup!", "squash!".
 static WIP_COMMIT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(^wip\b|^wip:|^\[wip\]|\bwork.?in.?progress\b|^fixup!|^squash!|^amend!|\bdo\s*not\s*merge\b|\bdon'?t\s*merge\b|\bwip\s*$)")
         .expect("Invalid WIP commit regex")
 });
 
-/// Regex for non-imperative mood patterns in commit messages.
-/// Detects past tense (-ed) and present continuous (-ing) verb forms at the start.
 static NON_IMPERATIVE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    // Match after optional conventional commit prefix (type(scope): )
-    // Common past tense and -ing forms that indicate non-imperative mood
     Regex::new(r"(?i)^(?:(?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([^)]+\))?!?:\s*)?(added|removed|fixed|updated|changed|implemented|created|deleted|modified|refactored|improved|resolved|merged|moved|renamed|replaced|cleaned|enabled|disabled|converted|introduced|integrated|adjusted|corrected|enhanced|extended|optimized|simplified|upgraded|migrated|adding|removing|fixing|updating|changing|implementing|creating|deleting|modifying|refactoring|improving|resolving|merging|moving|renaming|replacing|cleaning|enabling|disabling|converting|introducing|integrating|adjusting|correcting|enhancing|extending|optimizing|simplifying|upgrading|migrating)\b")
         .expect("Invalid non-imperative regex")
 });
@@ -62,7 +51,6 @@ pub enum Validation {
 }
 
 impl Validation {
-    /// Returns the validation name as a string (for CLI parsing).
     pub fn name(&self) -> &'static str {
         match self {
             Validation::ShortCommit => "ShortCommit",
@@ -74,10 +62,6 @@ impl Validation {
         }
     }
 
-    /// Generate an actionable suggestion for this validation type.
-    ///
-    /// The subject provides context for suggestions that need it
-    /// (e.g., NonImperative needs to know which word to correct).
     pub fn suggest(&self, subject: &str) -> String {
         match self {
             Validation::ShortCommit => "Add context: what changed and why".to_string(),
@@ -99,27 +83,24 @@ impl Validation {
                 None => "Be specific about what changed and where".to_string(),
             },
             Validation::WipCommit => get_wip_suggestion(subject),
-            Validation::NonImperative => {
-                match find_non_imperative(subject) {
-                    Some(before) => {
-                        let after = to_imperative(before);
-                        // Preserve original capitalization
-                        let after = if before.chars().next().is_some_and(|c| c.is_uppercase()) {
-                            let mut chars = after.chars();
-                            match chars.next() {
-                                Some(first) => {
-                                    first.to_uppercase().collect::<String>() + chars.as_str()
-                                }
-                                None => after,
+            Validation::NonImperative => match find_non_imperative(subject) {
+                Some(before) => {
+                    let after = to_imperative(before);
+                    let after = if before.chars().next().is_some_and(|c| c.is_uppercase()) {
+                        let mut chars = after.chars();
+                        match chars.next() {
+                            Some(first) => {
+                                first.to_uppercase().collect::<String>() + chars.as_str()
                             }
-                        } else {
-                            after
-                        };
-                        format!("Use imperative: '{}' → '{}'", before, after)
-                    }
-                    None => "Use imperative mood (e.g., 'Add' not 'Added')".to_string(),
+                            None => after,
+                        }
+                    } else {
+                        after
+                    };
+                    format!("Use imperative: '{}' → '{}'", before, after)
                 }
-            }
+                None => "Use imperative mood (e.g., 'Add' not 'Added')".to_string(),
+            },
         }
     }
 }
@@ -186,8 +167,6 @@ impl fmt::Display for Severity {
     }
 }
 
-/// A validation finding with its severity.
-/// Suggestions are computed on demand via `validation.suggest(subject)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub validation: Validation,
@@ -195,7 +174,6 @@ pub struct Finding {
 }
 
 impl Finding {
-    /// Create a new finding.
     pub fn new(validation: Validation, severity: Severity) -> Self {
         Self {
             validation,
@@ -204,31 +182,21 @@ impl Finding {
     }
 }
 
-/// Configuration for validation behavior.
-///
-/// Controls which validations are enabled and their severity levels.
-/// Users who don't use conventional commits can disable format checking.
-/// Users whose projects don't use issue references can disable that check.
+/// Configure which validations run and their severity levels.
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct ValidationConfig {
     severities: HashMap<Validation, Severity>,
-    /// Minimum commit message length (characters).
     #[pyo3(get, set)]
     pub threshold: usize,
-    /// Whether to require issue references (e.g., #123).
     #[pyo3(get, set)]
     pub require_issue_ref: bool,
-    /// Whether to require conventional commit format.
     #[pyo3(get, set)]
     pub require_conventional_format: bool,
-    /// Whether to check for vague language.
     #[pyo3(get, set)]
     pub check_vague_language: bool,
-    /// Whether to check for WIP commits.
     #[pyo3(get, set)]
     pub check_wip: bool,
-    /// Whether to check for imperative mood.
     #[pyo3(get, set)]
     pub check_imperative: bool,
 }
@@ -236,7 +204,6 @@ pub struct ValidationConfig {
 impl Default for ValidationConfig {
     fn default() -> Self {
         let mut severities = HashMap::new();
-        // Default severities - sensible defaults that can be overridden
         severities.insert(Validation::WipCommit, Severity::Error);
         severities.insert(Validation::ShortCommit, Severity::Warning);
         severities.insert(Validation::VagueLanguage, Severity::Warning);
@@ -246,7 +213,6 @@ impl Default for ValidationConfig {
         Self {
             severities,
             threshold: 30,
-            // Sensible defaults: most projects benefit from these checks
             require_issue_ref: true,
             require_conventional_format: true,
             check_vague_language: true,
@@ -257,12 +223,10 @@ impl Default for ValidationConfig {
 }
 
 impl ValidationConfig {
-    /// Create a new configuration with default severities.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Create a configuration with a specific threshold.
     pub fn with_threshold(threshold: usize) -> Self {
         Self {
             threshold,
@@ -270,56 +234,48 @@ impl ValidationConfig {
         }
     }
 
-    /// Builder method to set threshold.
     #[must_use]
     pub fn threshold(mut self, threshold: usize) -> Self {
         self.threshold = threshold;
         self
     }
 
-    /// Builder method to set require_issue_ref.
     #[must_use]
     pub fn require_issue_ref(mut self, require: bool) -> Self {
         self.require_issue_ref = require;
         self
     }
 
-    /// Builder method to set require_conventional_format.
     #[must_use]
     pub fn require_conventional_format(mut self, require: bool) -> Self {
         self.require_conventional_format = require;
         self
     }
 
-    /// Builder method to set check_vague_language.
     #[must_use]
     pub fn check_vague_language(mut self, check: bool) -> Self {
         self.check_vague_language = check;
         self
     }
 
-    /// Builder method to set check_wip.
     #[must_use]
     pub fn check_wip(mut self, check: bool) -> Self {
         self.check_wip = check;
         self
     }
 
-    /// Builder method to set check_imperative.
     #[must_use]
     pub fn check_imperative(mut self, check: bool) -> Self {
         self.check_imperative = check;
         self
     }
 
-    /// Builder method to set severity for a validation type.
     #[must_use]
     pub fn severity(mut self, validation: Validation, severity: Severity) -> Self {
         self.severities.insert(validation, severity);
         self
     }
 
-    /// Get the severity for a validation type.
     pub fn get_severity(&self, validation: &Validation) -> Severity {
         self.severities
             .get(validation)
@@ -327,17 +283,14 @@ impl ValidationConfig {
             .unwrap_or(Severity::Warning)
     }
 
-    /// Check if a validation should be reported (not ignored).
     pub fn should_report(&self, validation: &Validation) -> bool {
         self.get_severity(validation) != Severity::Ignore
     }
 
-    /// Check if a validation is an error.
     pub fn is_error(&self, validation: &Validation) -> bool {
         self.get_severity(validation) == Severity::Error
     }
 
-    /// Parse a comma-separated list of validation names and set their severity.
     pub fn parse_and_set(&mut self, validations: &str, severity: Severity) -> Result<(), String> {
         for name in validations.split(',') {
             let name = name.trim();
@@ -350,7 +303,6 @@ impl ValidationConfig {
         Ok(())
     }
 
-    /// Parse a comma-separated list of validation names to disable.
     pub fn parse_and_disable(&mut self, validations: &str) -> Result<(), String> {
         for name in validations.split(',') {
             let name = name.trim();
@@ -373,7 +325,7 @@ impl ValidationConfig {
 
 #[pymethods]
 impl ValidationConfig {
-    /// Create a new ValidationConfig with default settings.
+    /// Create a new ValidationConfig.
     ///
     /// Args:
     ///     threshold: Minimum message length in characters (default: 30)
@@ -411,22 +363,12 @@ impl ValidationConfig {
     }
 
     /// Set the severity level for a validation type.
-    ///
-    /// Args:
-    ///     validation: The validation type to configure
-    ///     severity: The severity level (Error, Warning, Info, Ignore)
     #[pyo3(name = "set_severity")]
     fn py_set_severity(&mut self, validation: Validation, severity: Severity) {
         self.severities.insert(validation, severity);
     }
 
     /// Get the severity level for a validation type.
-    ///
-    /// Args:
-    ///     validation: The validation type to query
-    ///
-    /// Returns:
-    ///     The severity level for the validation
     #[pyo3(name = "get_severity")]
     fn py_get_severity(&self, validation: Validation) -> Severity {
         self.get_severity(&validation)
@@ -447,7 +389,7 @@ impl ValidationConfig {
 
 #[pymethods]
 impl Validation {
-    /// Returns a human-readable description of this validation type.
+    /// Human-readable description of this validation type.
     fn __str__(&self) -> &'static str {
         match self {
             Validation::ShortCommit => "Short commit message",
@@ -459,7 +401,6 @@ impl Validation {
         }
     }
 
-    /// Returns a string representation for debugging.
     fn __repr__(&self) -> String {
         match self {
             Validation::ShortCommit => "Validation.ShortCommit".to_string(),
@@ -491,29 +432,22 @@ impl fmt::Display for Validation {
     }
 }
 
-/// Check if a commit message contains an issue/ticket reference.
 pub fn has_reference(subject: &str) -> bool {
     REFERENCE_REGEX.is_match(subject)
 }
 
-/// Check if a commit message follows conventional commits format.
 pub fn has_conventional_format(subject: &str) -> bool {
     CONVENTIONAL_COMMIT_REGEX.is_match(subject)
 }
 
-/// Find vague language in a commit message.
-/// Returns the matched vague phrase if found.
 pub fn find_vague_language(subject: &str) -> Option<&str> {
     VAGUE_LANGUAGE_REGEX.find(subject).map(|m| m.as_str())
 }
 
-/// Check if a commit message indicates work-in-progress.
 pub fn is_wip_commit(subject: &str) -> bool {
     WIP_COMMIT_REGEX.is_match(subject)
 }
 
-/// Find non-imperative mood word in a commit message.
-/// Returns the matched non-imperative word if found.
 pub fn find_non_imperative(subject: &str) -> Option<&str> {
     NON_IMPERATIVE_REGEX
         .captures(subject)
@@ -521,7 +455,6 @@ pub fn find_non_imperative(subject: &str) -> Option<&str> {
         .map(|m| m.as_str())
 }
 
-/// Check if a commit is too short.
 fn check_short(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     if subject.len() <= config.threshold {
         let severity = config.get_severity(&Validation::ShortCommit);
@@ -532,7 +465,6 @@ fn check_short(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     None
 }
 
-/// Check if a commit is missing an issue reference.
 fn check_issue_reference(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     if !has_reference(subject) {
         let severity = config.get_severity(&Validation::MissingReference);
@@ -543,16 +475,12 @@ fn check_issue_reference(subject: &str, config: &ValidationConfig) -> Option<Fin
     None
 }
 
-/// Suggest a conventional commit type based on message content.
 fn suggest_commit_type(subject: &str) -> &'static str {
     let lower = subject.to_lowercase();
 
-    // Check for merge commits first - these are usually chore
     if lower.starts_with("merge") {
         return "chore";
     }
-
-    // Check for fix-related words
     if lower.starts_with("fix")
         || lower.contains("resolve")
         || lower.contains("repair")
@@ -561,8 +489,6 @@ fn suggest_commit_type(subject: &str) -> &'static str {
     {
         return "fix";
     }
-
-    // Check for feature-related words
     if lower.starts_with("add")
         || lower.starts_with("implement")
         || lower.starts_with("create")
@@ -571,8 +497,6 @@ fn suggest_commit_type(subject: &str) -> &'static str {
     {
         return "feat";
     }
-
-    // Check for refactor-related words
     if lower.contains("refactor")
         || lower.contains("restructure")
         || lower.contains("reorganize")
@@ -581,8 +505,6 @@ fn suggest_commit_type(subject: &str) -> &'static str {
     {
         return "refactor";
     }
-
-    // Check for chore-related words (delete, remove, init, config changes)
     if lower.starts_with("delete")
         || lower.starts_with("remove")
         || lower.starts_with("init")
@@ -595,8 +517,6 @@ fn suggest_commit_type(subject: &str) -> &'static str {
     {
         return "chore";
     }
-
-    // Check for docs-related words
     if lower.contains("readme")
         || lower.contains("doc")
         || lower.contains("comment")
@@ -604,17 +524,12 @@ fn suggest_commit_type(subject: &str) -> &'static str {
     {
         return "docs";
     }
-
-    // Check for test-related words
     if lower.contains("test") || lower.contains("spec") || lower.contains("coverage") {
         return "test";
     }
-
-    // Default suggestion
     "feat"
 }
 
-/// Check if a commit follows conventional format.
 fn check_conventional_format(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     if !has_conventional_format(subject) {
         let severity = config.get_severity(&Validation::InvalidFormat);
@@ -625,7 +540,6 @@ fn check_conventional_format(subject: &str, config: &ValidationConfig) -> Option
     None
 }
 
-/// Check if a commit uses vague language.
 fn check_vague(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     if find_vague_language(subject).is_some() {
         let severity = config.get_severity(&Validation::VagueLanguage);
@@ -636,7 +550,6 @@ fn check_vague(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     None
 }
 
-/// Get a tailored suggestion for WIP commits based on the type detected.
 fn get_wip_suggestion(subject: &str) -> String {
     let lower = subject.to_lowercase();
 
@@ -655,12 +568,9 @@ fn get_wip_suggestion(subject: &str) -> String {
     {
         return "Remove marker when ready: git commit --amend".to_string();
     }
-
-    // Default for WIP prefix/suffix
     "Finalize before merging: git commit --amend".to_string()
 }
 
-/// Check if a commit is a work-in-progress.
 fn check_wip(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     if is_wip_commit(subject) {
         let severity = config.get_severity(&Validation::WipCommit);
@@ -671,11 +581,8 @@ fn check_wip(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     None
 }
 
-/// Static mapping from non-imperative verb forms to imperative.
-/// This covers all words matched by NON_IMPERATIVE_REGEX.
 static IMPERATIVE_MAP: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     HashMap::from([
-        // Past tense (-ed) -> imperative
         ("added", "add"),
         ("removed", "remove"),
         ("fixed", "fix"),
@@ -706,7 +613,6 @@ static IMPERATIVE_MAP: LazyLock<HashMap<&'static str, &'static str>> = LazyLock:
         ("simplified", "simplify"),
         ("upgraded", "upgrade"),
         ("migrated", "migrate"),
-        // Present continuous (-ing) -> imperative
         ("adding", "add"),
         ("removing", "remove"),
         ("fixing", "fix"),
@@ -740,7 +646,6 @@ static IMPERATIVE_MAP: LazyLock<HashMap<&'static str, &'static str>> = LazyLock:
     ])
 });
 
-/// Convert a non-imperative verb to its imperative form.
 fn to_imperative(word: &str) -> String {
     let lower = word.to_lowercase();
     IMPERATIVE_MAP
@@ -749,7 +654,6 @@ fn to_imperative(word: &str) -> String {
         .unwrap_or_else(|| word.to_string())
 }
 
-/// Check if a commit uses non-imperative mood.
 fn check_imperative(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     if find_non_imperative(subject).is_some() {
         let severity = config.get_severity(&Validation::NonImperative);
@@ -762,61 +666,50 @@ fn check_imperative(subject: &str, config: &ValidationConfig) -> Option<Finding>
 
 use crate::commit::Commit;
 
-/// Validate a commit against all enabled validations.
-///
-/// Returns a list of findings based on the configuration.
-/// Only enabled validations are run, and only non-ignored findings are returned.
+/// Validate a commit against enabled checks.
 ///
 /// Priority rules:
-/// - WIP: Skip ShortCommit and VagueLanguage (user knows it's incomplete)
-/// - ShortCommit: Skip NonImperative (message needs full rewrite, not word fixes)
+/// - WIP suppresses ShortCommit and VagueLanguage
+/// - ShortCommit suppresses NonImperative
 pub fn validate_commit(commit: &Commit, config: &ValidationConfig) -> Vec<Finding> {
     let mut findings = Vec::new();
     let subject = &commit.subject;
 
-    // Check for WIP commits first (highest priority)
     let is_wip = config.check_wip && is_wip_commit(subject);
-    if is_wip && let Some(f) = check_wip(subject, config) {
-        findings.push(f);
+    if is_wip {
+        if let Some(f) = check_wip(subject, config) {
+            findings.push(f);
+        }
     }
 
-    // Skip short and vague checks for WIP commits - user knows it's incomplete
     let is_short = !is_wip && subject.len() <= config.threshold;
     if !is_wip {
-        // Check for short commits (controlled by threshold)
         if let Some(f) = check_short(subject, config) {
             findings.push(f);
         }
+        if config.check_vague_language {
+            if let Some(f) = check_vague(subject, config) {
+                findings.push(f);
+            }
+        }
+    }
 
-        // Check for vague language
-        if config.check_vague_language
-            && let Some(f) = check_vague(subject, config)
-        {
+    if config.require_issue_ref {
+        if let Some(f) = check_issue_reference(subject, config) {
             findings.push(f);
         }
     }
 
-    // These checks still apply to WIP commits
-    // Check for issue references
-    if config.require_issue_ref
-        && let Some(f) = check_issue_reference(subject, config)
-    {
-        findings.push(f);
+    if config.require_conventional_format {
+        if let Some(f) = check_conventional_format(subject, config) {
+            findings.push(f);
+        }
     }
 
-    // Check for conventional format
-    if config.require_conventional_format
-        && let Some(f) = check_conventional_format(subject, config)
-    {
-        findings.push(f);
-    }
-
-    // Check for imperative mood (skip if short - message needs full rewrite)
-    if config.check_imperative
-        && !is_short
-        && let Some(f) = check_imperative(subject, config)
-    {
-        findings.push(f);
+    if config.check_imperative && !is_short {
+        if let Some(f) = check_imperative(subject, config) {
+            findings.push(f);
+        }
     }
 
     findings
@@ -830,12 +723,10 @@ pub struct ValidationResult<'a> {
 }
 
 impl<'a> ValidationResult<'a> {
-    /// Check if any finding is an error.
     pub fn has_errors(&self) -> bool {
         self.findings.iter().any(|f| f.severity == Severity::Error)
     }
 
-    /// Check if any finding is a warning.
     pub fn has_warnings(&self) -> bool {
         self.findings
             .iter()
@@ -843,7 +734,6 @@ impl<'a> ValidationResult<'a> {
     }
 }
 
-/// Validate all commits and return only those with findings.
 pub fn validate_commits<'a>(
     commits: &'a [Commit],
     config: &ValidationConfig,

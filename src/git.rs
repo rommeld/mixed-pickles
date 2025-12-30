@@ -8,7 +8,6 @@ use std::{
 use crate::commit::Commit;
 use crate::error::CLIError;
 
-/// Fetch commits from a git repository.
 pub fn fetch_commits(
     repo_path: Option<&PathBuf>,
     limit: Option<usize>,
@@ -60,7 +59,6 @@ pub fn fetch_commits(
     Ok(commits)
 }
 
-/// Count total commits in a git repository.
 pub fn count_commits(repo_path: Option<&PathBuf>) -> Result<usize, CLIError> {
     let mut command = Command::new("git");
 
@@ -82,7 +80,6 @@ pub fn count_commits(repo_path: Option<&PathBuf>) -> Result<usize, CLIError> {
         .map_err(|_| CLIError::GitCommandFailed("Failed to parse commit count".to_string()))
 }
 
-/// Validate that a path is a git repository.
 pub fn validate_repo_path(path: &Path) -> Result<(), CLIError> {
     if !path.exists() {
         return Err(CLIError::PathNotFound(path.to_path_buf()));

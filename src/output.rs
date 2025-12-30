@@ -1,10 +1,9 @@
-//! Output formatting for commit analysis results.
+//! Output formatting.
 
 use std::path::PathBuf;
 
 use crate::validation::{Severity, ValidationResult};
 
-/// Status of commit message analysis.
 enum CommitMessageStatus {
     NeedsWork,
     Acceptable,
@@ -23,7 +22,6 @@ impl CommitMessageStatus {
     }
 }
 
-/// Get the severity prefix for display.
 fn severity_prefix(severity: Severity) -> &'static str {
     match severity {
         Severity::Error => "✗",
@@ -33,7 +31,6 @@ fn severity_prefix(severity: Severity) -> &'static str {
     }
 }
 
-/// Helper for singular/plural.
 fn pluralize(count: usize, singular: &str, plural: &str) -> String {
     if count == 1 {
         format!("{} {}", count, singular)
@@ -42,7 +39,6 @@ fn pluralize(count: usize, singular: &str, plural: &str) -> String {
     }
 }
 
-/// Print validation results to stdout.
 pub fn print_results(
     validation_results: &[ValidationResult],
     total_commits: usize,
@@ -60,7 +56,6 @@ pub fn print_results(
             println!("Commit messages are adequately executed.");
         }
         CommitMessageStatus::NeedsWork => {
-            // Header
             let path_display = path
                 .as_ref()
                 .map(|p| p.display().to_string())
@@ -73,7 +68,6 @@ pub fn print_results(
                 threshold
             );
 
-            // Count findings by severity
             let mut total_errors = 0;
             let mut total_warnings = 0;
             for result in validation_results {
@@ -86,7 +80,6 @@ pub fn print_results(
                 }
             }
 
-            // Print each commit with issues
             for result in validation_results {
                 println!(
                     "Commit {} by {} <{}>",
@@ -97,20 +90,17 @@ pub fn print_results(
                 let subject = result.commit.subject();
                 println!("  Subject: \"{}\"", subject);
                 for finding in &result.findings {
-                    // Finding: what's wrong
                     println!(
                         "  {} {}",
                         severity_prefix(finding.severity),
                         finding.validation
                     );
-                    // Suggestion: what to do about it
                     let suggestion = finding.validation.suggest(subject);
                     println!("    → {}", suggestion);
                 }
                 println!();
             }
 
-            // Summary
             println!(
                 "Summary: {} with issues ({}, {})",
                 pluralize(validation_results.len(), "commit", "commits"),
