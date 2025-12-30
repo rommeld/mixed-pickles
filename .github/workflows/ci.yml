@@ -51,3 +51,15 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run maturin develop
       - run: uv run pytest tests/python -v
+
+  install:
+    name: Install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run maturin develop
+      - run: uv run mixed-pickles --help
