@@ -190,6 +190,8 @@ pub struct ValidationConfig {
     #[pyo3(get, set)]
     pub threshold: usize,
     #[pyo3(get, set)]
+    pub check_short: bool,
+    #[pyo3(get, set)]
     pub require_issue_ref: bool,
     #[pyo3(get, set)]
     pub require_conventional_format: bool,
@@ -213,6 +215,7 @@ impl Default for ValidationConfig {
         Self {
             severities,
             threshold: 30,
+            check_short: true,
             require_issue_ref: true,
             require_conventional_format: true,
             check_vague_language: true,
@@ -237,6 +240,12 @@ impl ValidationConfig {
     #[must_use]
     pub fn threshold(mut self, threshold: usize) -> Self {
         self.threshold = threshold;
+        self
+    }
+
+    #[must_use]
+    pub fn check_short(mut self, check: bool) -> Self {
+        self.check_short = check;
         self
     }
 
@@ -310,7 +319,7 @@ impl ValidationConfig {
                 continue;
             }
             match name.to_lowercase().as_str() {
-                "shortcommit" | "short" => self.threshold = 0,
+                "shortcommit" | "short" => self.check_short = false,
                 "missingreference" | "reference" | "ref" => self.require_issue_ref = false,
                 "invalidformat" | "format" => self.require_conventional_format = false,
                 "vaguelanguage" | "vague" => self.check_vague_language = false,
@@ -329,6 +338,7 @@ impl ValidationConfig {
     ///
     /// Args:
     ///     threshold: Minimum message length in characters (default: 30)
+    ///     check_short: Check for short commit messages (default: True)
     ///     require_issue_ref: Check for issue references like #123 (default: True)
     ///     require_conventional_format: Check for conventional commit format (default: True)
     ///     check_vague_language: Check for vague descriptions (default: True)
@@ -337,6 +347,7 @@ impl ValidationConfig {
     #[new]
     #[pyo3(signature = (
         threshold=30,
+        check_short=true,
         require_issue_ref=true,
         require_conventional_format=true,
         check_vague_language=true,
@@ -345,6 +356,7 @@ impl ValidationConfig {
     ))]
     fn py_new(
         threshold: usize,
+        check_short: bool,
         require_issue_ref: bool,
         require_conventional_format: bool,
         check_vague_language: bool,
@@ -353,6 +365,7 @@ impl ValidationConfig {
     ) -> Self {
         Self {
             threshold,
+            check_short,
             require_issue_ref,
             require_conventional_format,
             check_vague_language,
@@ -456,6 +469,9 @@ pub fn find_non_imperative(subject: &str) -> Option<&str> {
 }
 
 fn check_short(subject: &str, config: &ValidationConfig) -> Option<Finding> {
+    if !config.check_short {
+        return None;
+    }
     if subject.len() <= config.threshold {
         let severity = config.get_severity(&Validation::ShortCommit);
         if severity != Severity::Ignore {
@@ -676,10 +692,9 @@ pub fn validate_commit(commit: &Commit, config: &ValidationConfig) -> Vec<Findin
     let subject = &commit.subject;
 
     let is_wip = config.check_wip && is_wip_commit(subject);
-    if is_wip
-        && let Some(f) = check_wip(subject, config) {
-            findings.push(f);
-        }
+    if is_wip && let Some(f) = check_wip(subject, config) {
+        findings.push(f);
+    }
 
     let is_short = !is_wip && subject.len() <= config.threshold;
     if !is_wip {
@@ -687,25 +702,30 @@ pub fn validate_commit(commit: &Commit, config: &ValidationConfig) -> Vec<Findin
             findings.push(f);
         }
         if config.check_vague_language
-            && let Some(f) = check_vague(subject, config) {
-                findings.push(f);
-            }
+            && let Some(f) = check_vague(subject, config)
+        {
+            findings.push(f);
+        }
     }
 
     if config.require_issue_ref
-        && let Some(f) = check_issue_reference(subject, config) {
-            findings.push(f);
-        }
+        && let Some(f) = check_issue_reference(subject, config)
+    {
+        findings.push(f);
+    }
 
     if config.require_conventional_format
-        && let Some(f) = check_conventional_format(subject, config) {
-            findings.push(f);
-        }
+        && let Some(f) = check_conventional_format(subject, config)
+    {
+        findings.push(f);
+    }
 
-    if config.check_imperative && !is_short
-        && let Some(f) = check_imperative(subject, config) {
-            findings.push(f);
-        }
+    if config.check_imperative
+        && !is_short
+        && let Some(f) = check_imperative(subject, config)
+    {
+        findings.push(f);
+    }
 
     findings
 }
