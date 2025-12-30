@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- add installation and usage to README.md (35f2127)
+
 ### Added
 
 - add NonImperative validation to detect commit messages that do not use imperative mood (7302698)
