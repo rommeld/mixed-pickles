@@ -94,13 +94,18 @@ pub fn print_results(
                     result.commit.author_name(),
                     result.commit.author_email()
                 );
-                println!("  Subject: \"{}\"", result.commit.subject());
+                let subject = result.commit.subject();
+                println!("  Subject: \"{}\"", subject);
                 for finding in &result.findings {
+                    // Finding: what's wrong
                     println!(
                         "  {} {}",
                         severity_prefix(finding.severity),
                         finding.validation
                     );
+                    // Suggestion: what to do about it
+                    let suggestion = finding.validation.suggest(subject);
+                    println!("    → {}", suggestion);
                 }
                 println!();
             }

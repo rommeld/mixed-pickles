@@ -73,6 +73,52 @@ impl Validation {
             Validation::NonImperative => "NonImperative",
         }
     }
+
+    /// Generate an actionable suggestion for this validation type.
+    ///
+    /// The subject provides context for suggestions that need it
+    /// (e.g., NonImperative needs to know which word to correct).
+    pub fn suggest(&self, subject: &str) -> String {
+        match self {
+            Validation::ShortCommit => "Add context: what changed and why".to_string(),
+            Validation::MissingReference => {
+                "Add a ticket reference (e.g., #123 or PROJ-456) if applicable".to_string()
+            }
+            Validation::InvalidFormat => {
+                let suggested_type = suggest_commit_type(subject);
+                format!("Use conventional format: '{}: <description>'", suggested_type)
+            }
+            Validation::VagueLanguage => {
+                match find_vague_language(subject) {
+                    Some(vague_phrase) => format!(
+                        "'{}' lacks specifics - mention what and where",
+                        vague_phrase
+                    ),
+                    None => "Be specific about what changed and where".to_string(),
+                }
+            }
+            Validation::WipCommit => get_wip_suggestion(subject),
+            Validation::NonImperative => {
+                match find_non_imperative(subject) {
+                    Some(before) => {
+                        let after = to_imperative(before);
+                        // Preserve original capitalization
+                        let after = if before.chars().next().is_some_and(|c| c.is_uppercase()) {
+                            let mut chars = after.chars();
+                            match chars.next() {
+                                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                                None => after,
+                            }
+                        } else {
+                            after
+                        };
+                        format!("Use imperative: '{}' → '{}'", before, after)
+                    }
+                    None => "Use imperative mood (e.g., 'Add' not 'Added')".to_string(),
+                }
+            }
+        }
+    }
 }
 
 impl FromStr for Validation {
@@ -138,6 +184,7 @@ impl fmt::Display for Severity {
 }
 
 /// A validation finding with its severity.
+/// Suggestions are computed on demand via `validation.suggest(subject)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub validation: Validation,
@@ -145,6 +192,7 @@ pub struct Finding {
 }
 
 impl Finding {
+    /// Create a new finding.
     pub fn new(validation: Validation, severity: Severity) -> Self {
         Self {
             validation,
@@ -450,9 +498,10 @@ pub fn has_conventional_format(subject: &str) -> bool {
     CONVENTIONAL_COMMIT_REGEX.is_match(subject)
 }
 
-/// Check if a commit message contains vague language.
-pub fn has_vague_language(subject: &str) -> bool {
-    VAGUE_LANGUAGE_REGEX.is_match(subject)
+/// Find vague language in a commit message.
+/// Returns the matched vague phrase if found.
+pub fn find_vague_language(subject: &str) -> Option<&str> {
+    VAGUE_LANGUAGE_REGEX.find(subject).map(|m| m.as_str())
 }
 
 /// Check if a commit message indicates work-in-progress.
@@ -460,9 +509,13 @@ pub fn is_wip_commit(subject: &str) -> bool {
     WIP_COMMIT_REGEX.is_match(subject)
 }
 
-/// Check if a commit message uses non-imperative mood.
-pub fn is_non_imperative(subject: &str) -> bool {
-    NON_IMPERATIVE_REGEX.is_match(subject)
+/// Find non-imperative mood word in a commit message.
+/// Returns the matched non-imperative word if found.
+pub fn find_non_imperative(subject: &str) -> Option<&str> {
+    NON_IMPERATIVE_REGEX
+        .captures(subject)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str())
 }
 
 /// Check if a commit is too short.
@@ -487,6 +540,77 @@ fn check_issue_reference(subject: &str, config: &ValidationConfig) -> Option<Fin
     None
 }
 
+/// Suggest a conventional commit type based on message content.
+fn suggest_commit_type(subject: &str) -> &'static str {
+    let lower = subject.to_lowercase();
+
+    // Check for merge commits first - these are usually chore
+    if lower.starts_with("merge") {
+        return "chore";
+    }
+
+    // Check for fix-related words
+    if lower.starts_with("fix")
+        || lower.contains("resolve")
+        || lower.contains("repair")
+        || lower.contains("patch")
+        || lower.contains("correct")
+    {
+        return "fix";
+    }
+
+    // Check for feature-related words
+    if lower.starts_with("add")
+        || lower.starts_with("implement")
+        || lower.starts_with("create")
+        || lower.starts_with("introduce")
+        || lower.contains("new feature")
+    {
+        return "feat";
+    }
+
+    // Check for refactor-related words
+    if lower.contains("refactor")
+        || lower.contains("restructure")
+        || lower.contains("reorganize")
+        || lower.contains("simplify")
+        || lower.contains("clean up")
+    {
+        return "refactor";
+    }
+
+    // Check for chore-related words (delete, remove, init, config changes)
+    if lower.starts_with("delete")
+        || lower.starts_with("remove")
+        || lower.starts_with("init")
+        || lower.contains("bump")
+        || lower.contains("upgrade")
+        || lower.contains("update dep")
+        || lower.contains("dependency")
+        || lower.contains("version")
+        || lower.contains("config")
+    {
+        return "chore";
+    }
+
+    // Check for docs-related words
+    if lower.contains("readme")
+        || lower.contains("doc")
+        || lower.contains("comment")
+        || lower.contains("typo")
+    {
+        return "docs";
+    }
+
+    // Check for test-related words
+    if lower.contains("test") || lower.contains("spec") || lower.contains("coverage") {
+        return "test";
+    }
+
+    // Default suggestion
+    "feat"
+}
+
 /// Check if a commit follows conventional format.
 fn check_conventional_format(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     if !has_conventional_format(subject) {
@@ -500,13 +624,37 @@ fn check_conventional_format(subject: &str, config: &ValidationConfig) -> Option
 
 /// Check if a commit uses vague language.
 fn check_vague(subject: &str, config: &ValidationConfig) -> Option<Finding> {
-    if has_vague_language(subject) {
+    if find_vague_language(subject).is_some() {
         let severity = config.get_severity(&Validation::VagueLanguage);
         if severity != Severity::Ignore {
             return Some(Finding::new(Validation::VagueLanguage, severity));
         }
     }
     None
+}
+
+/// Get a tailored suggestion for WIP commits based on the type detected.
+fn get_wip_suggestion(subject: &str) -> String {
+    let lower = subject.to_lowercase();
+
+    if lower.starts_with("fixup!") {
+        return "Squash before merging: git rebase -i --autosquash".to_string();
+    }
+    if lower.starts_with("squash!") {
+        return "Squash before merging: git rebase -i --autosquash".to_string();
+    }
+    if lower.starts_with("amend!") {
+        return "Rebase before merging: git rebase -i --autosquash".to_string();
+    }
+    if lower.contains("do not merge")
+        || lower.contains("don't merge")
+        || lower.contains("dont merge")
+    {
+        return "Remove marker when ready: git commit --amend".to_string();
+    }
+
+    // Default for WIP prefix/suffix
+    "Finalize before merging: git commit --amend".to_string()
 }
 
 /// Check if a commit is a work-in-progress.
@@ -520,9 +668,87 @@ fn check_wip(subject: &str, config: &ValidationConfig) -> Option<Finding> {
     None
 }
 
+/// Static mapping from non-imperative verb forms to imperative.
+/// This covers all words matched by NON_IMPERATIVE_REGEX.
+static IMPERATIVE_MAP: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
+    HashMap::from([
+        // Past tense (-ed) -> imperative
+        ("added", "add"),
+        ("removed", "remove"),
+        ("fixed", "fix"),
+        ("updated", "update"),
+        ("changed", "change"),
+        ("implemented", "implement"),
+        ("created", "create"),
+        ("deleted", "delete"),
+        ("modified", "modify"),
+        ("refactored", "refactor"),
+        ("improved", "improve"),
+        ("resolved", "resolve"),
+        ("merged", "merge"),
+        ("moved", "move"),
+        ("renamed", "rename"),
+        ("replaced", "replace"),
+        ("cleaned", "clean"),
+        ("enabled", "enable"),
+        ("disabled", "disable"),
+        ("converted", "convert"),
+        ("introduced", "introduce"),
+        ("integrated", "integrate"),
+        ("adjusted", "adjust"),
+        ("corrected", "correct"),
+        ("enhanced", "enhance"),
+        ("extended", "extend"),
+        ("optimized", "optimize"),
+        ("simplified", "simplify"),
+        ("upgraded", "upgrade"),
+        ("migrated", "migrate"),
+        // Present continuous (-ing) -> imperative
+        ("adding", "add"),
+        ("removing", "remove"),
+        ("fixing", "fix"),
+        ("updating", "update"),
+        ("changing", "change"),
+        ("implementing", "implement"),
+        ("creating", "create"),
+        ("deleting", "delete"),
+        ("modifying", "modify"),
+        ("refactoring", "refactor"),
+        ("improving", "improve"),
+        ("resolving", "resolve"),
+        ("merging", "merge"),
+        ("moving", "move"),
+        ("renaming", "rename"),
+        ("replacing", "replace"),
+        ("cleaning", "clean"),
+        ("enabling", "enable"),
+        ("disabling", "disable"),
+        ("converting", "convert"),
+        ("introducing", "introduce"),
+        ("integrating", "integrate"),
+        ("adjusting", "adjust"),
+        ("correcting", "correct"),
+        ("enhancing", "enhance"),
+        ("extending", "extend"),
+        ("optimizing", "optimize"),
+        ("simplifying", "simplify"),
+        ("upgrading", "upgrade"),
+        ("migrating", "migrate"),
+    ])
+});
+
+/// Convert a non-imperative verb to its imperative form.
+fn to_imperative(word: &str) -> String {
+    let lower = word.to_lowercase();
+    IMPERATIVE_MAP
+        .get(lower.as_str())
+        .map(|s| (*s).to_string())
+        .unwrap_or_else(|| word.to_string())
+}
+
 /// Check if a commit uses non-imperative mood.
 fn check_imperative(subject: &str, config: &ValidationConfig) -> Option<Finding> {
-    if is_non_imperative(subject) {
+    if find_non_imperative(subject).is_some() {
         let severity = config.get_severity(&Validation::NonImperative);
         if severity != Severity::Ignore {
             return Some(Finding::new(Validation::NonImperative, severity));
@@ -537,22 +763,39 @@ use crate::commit::Commit;
 ///
 /// Returns a list of findings based on the configuration.
 /// Only enabled validations are run, and only non-ignored findings are returned.
+///
+/// Priority rules:
+/// - WIP: Skip ShortCommit and VagueLanguage (user knows it's incomplete)
+/// - ShortCommit: Skip NonImperative (message needs full rewrite, not word fixes)
 pub fn validate_commit(commit: &Commit, config: &ValidationConfig) -> Vec<Finding> {
     let mut findings = Vec::new();
     let subject = &commit.subject;
 
-    // Always check for short commits (controlled by threshold)
-    if let Some(f) = check_short(subject, config) {
-        findings.push(f);
-    }
-
-    // Check for WIP commits
-    if config.check_wip
+    // Check for WIP commits first (highest priority)
+    let is_wip = config.check_wip && is_wip_commit(subject);
+    if is_wip
         && let Some(f) = check_wip(subject, config)
     {
         findings.push(f);
     }
 
+    // Skip short and vague checks for WIP commits - user knows it's incomplete
+    let is_short = !is_wip && subject.len() <= config.threshold;
+    if !is_wip {
+        // Check for short commits (controlled by threshold)
+        if let Some(f) = check_short(subject, config) {
+            findings.push(f);
+        }
+
+        // Check for vague language
+        if config.check_vague_language
+            && let Some(f) = check_vague(subject, config)
+        {
+            findings.push(f);
+        }
+    }
+
+    // These checks still apply to WIP commits
     // Check for issue references
     if config.require_issue_ref
         && let Some(f) = check_issue_reference(subject, config)
@@ -567,15 +810,9 @@ pub fn validate_commit(commit: &Commit, config: &ValidationConfig) -> Vec<Findin
         findings.push(f);
     }
 
-    // Check for vague language
-    if config.check_vague_language
-        && let Some(f) = check_vague(subject, config)
-    {
-        findings.push(f);
-    }
-
-    // Check for imperative mood
+    // Check for imperative mood (skip if short - message needs full rewrite)
     if config.check_imperative
+        && !is_short
         && let Some(f) = check_imperative(subject, config)
     {
         findings.push(f);
@@ -738,75 +975,69 @@ mod tests {
 
         #[test]
         fn detects_fix_bug() {
-            assert!(has_vague_language("fix bug"));
-            assert!(has_vague_language("fixed bug"));
-            assert!(has_vague_language("fixes bug"));
-            assert!(has_vague_language("fixing bug"));
+            assert!(find_vague_language("fix bug").is_some());
+            assert!(find_vague_language("fixed bug").is_some());
+            assert!(find_vague_language("fixes bug").is_some());
+            assert!(find_vague_language("fixing bug").is_some());
         }
 
         #[test]
         fn detects_update_code() {
-            assert!(has_vague_language("update code"));
-            assert!(has_vague_language("updated code"));
-            assert!(has_vague_language("updates code"));
+            assert!(find_vague_language("update code").is_some());
+            assert!(find_vague_language("updated code").is_some());
+            assert!(find_vague_language("updates code").is_some());
         }
 
         #[test]
         fn detects_change_stuff() {
-            assert!(has_vague_language("change stuff"));
-            assert!(has_vague_language("changed things"));
-            assert!(has_vague_language("changes it"));
+            assert!(find_vague_language("change stuff").is_some());
+            assert!(find_vague_language("changed things").is_some());
+            assert!(find_vague_language("changes it").is_some());
         }
 
         #[test]
         fn detects_modify_patterns() {
-            assert!(has_vague_language("modify code"));
-            assert!(has_vague_language("modified this"));
-            assert!(has_vague_language("modifies that"));
+            assert!(find_vague_language("modify code").is_some());
+            assert!(find_vague_language("modified this").is_some());
+            assert!(find_vague_language("modifies that").is_some());
         }
 
         #[test]
         fn detects_tweak_adjust_patterns() {
-            assert!(has_vague_language("tweak code"));
-            assert!(has_vague_language("tweaked stuff"));
-            assert!(has_vague_language("adjust things"));
-            assert!(has_vague_language("adjusted it"));
+            assert!(find_vague_language("tweak code").is_some());
+            assert!(find_vague_language("tweaked stuff").is_some());
+            assert!(find_vague_language("adjust things").is_some());
+            assert!(find_vague_language("adjusted it").is_some());
         }
 
         #[test]
         fn detects_issue_error_problem() {
-            assert!(has_vague_language("fix issue"));
-            assert!(has_vague_language("fix error"));
-            assert!(has_vague_language("fix problem"));
-            assert!(has_vague_language("fixed issues"));
+            assert!(find_vague_language("fix issue").is_some());
+            assert!(find_vague_language("fix error").is_some());
+            assert!(find_vague_language("fix problem").is_some());
+            assert!(find_vague_language("fixed issues").is_some());
         }
 
         #[test]
         fn allows_specific_descriptions() {
-            assert!(!has_vague_language(
-                "fix: resolve null pointer in user login"
-            ));
-            assert!(!has_vague_language("fix: handle edge case in parser"));
-            assert!(!has_vague_language("update README with installation steps"));
-            assert!(!has_vague_language("change default timeout to 30 seconds"));
+            assert!(find_vague_language("fix: resolve null pointer in user login").is_none());
+            assert!(find_vague_language("fix: handle edge case in parser").is_none());
+            assert!(find_vague_language("update README with installation steps").is_none());
+            assert!(find_vague_language("change default timeout to 30 seconds").is_none());
         }
 
         #[test]
         fn allows_conventional_commits_with_context() {
-            assert!(!has_vague_language(
-                "feat: add user authentication with OAuth2"
-            ));
-            assert!(!has_vague_language(
-                "fix: resolve memory leak in connection pool"
-            ));
-            assert!(!has_vague_language("docs: update API documentation"));
+            assert!(find_vague_language("feat: add user authentication with OAuth2").is_none());
+            assert!(find_vague_language("fix: resolve memory leak in connection pool").is_none());
+            assert!(find_vague_language("docs: update API documentation").is_none());
         }
 
         #[test]
         fn case_insensitive() {
-            assert!(has_vague_language("FIX BUG"));
-            assert!(has_vague_language("Fix Bug"));
-            assert!(has_vague_language("UPDATE CODE"));
+            assert!(find_vague_language("FIX BUG").is_some());
+            assert!(find_vague_language("Fix Bug").is_some());
+            assert!(find_vague_language("UPDATE CODE").is_some());
         }
     }
 
@@ -887,83 +1118,83 @@ mod tests {
 
         #[test]
         fn detects_past_tense_added() {
-            assert!(is_non_imperative("Added new feature"));
-            assert!(is_non_imperative("added user authentication"));
-            assert!(is_non_imperative("feat: Added new endpoint"));
+            assert!(find_non_imperative("Added new feature").is_some());
+            assert!(find_non_imperative("added user authentication").is_some());
+            assert!(find_non_imperative("feat: Added new endpoint").is_some());
         }
 
         #[test]
         fn detects_past_tense_fixed() {
-            assert!(is_non_imperative("Fixed bug in parser"));
-            assert!(is_non_imperative("fix: Fixed memory leak"));
+            assert!(find_non_imperative("Fixed bug in parser").is_some());
+            assert!(find_non_imperative("fix: Fixed memory leak").is_some());
         }
 
         #[test]
         fn detects_past_tense_updated() {
-            assert!(is_non_imperative("Updated dependencies"));
-            assert!(is_non_imperative("docs: Updated README"));
+            assert!(find_non_imperative("Updated dependencies").is_some());
+            assert!(find_non_imperative("docs: Updated README").is_some());
         }
 
         #[test]
         fn detects_past_tense_removed() {
-            assert!(is_non_imperative("Removed unused code"));
-            assert!(is_non_imperative("refactor: Removed dead code"));
+            assert!(find_non_imperative("Removed unused code").is_some());
+            assert!(find_non_imperative("refactor: Removed dead code").is_some());
         }
 
         #[test]
         fn detects_past_tense_other_verbs() {
-            assert!(is_non_imperative("Changed configuration"));
-            assert!(is_non_imperative("Implemented feature"));
-            assert!(is_non_imperative("Created new module"));
-            assert!(is_non_imperative("Deleted old files"));
-            assert!(is_non_imperative("Modified settings"));
-            assert!(is_non_imperative("Refactored code"));
-            assert!(is_non_imperative("Improved performance"));
-            assert!(is_non_imperative("Resolved conflict"));
-            assert!(is_non_imperative("Merged branch"));
-            assert!(is_non_imperative("Moved files"));
-            assert!(is_non_imperative("Renamed variable"));
+            assert!(find_non_imperative("Changed configuration").is_some());
+            assert!(find_non_imperative("Implemented feature").is_some());
+            assert!(find_non_imperative("Created new module").is_some());
+            assert!(find_non_imperative("Deleted old files").is_some());
+            assert!(find_non_imperative("Modified settings").is_some());
+            assert!(find_non_imperative("Refactored code").is_some());
+            assert!(find_non_imperative("Improved performance").is_some());
+            assert!(find_non_imperative("Resolved conflict").is_some());
+            assert!(find_non_imperative("Merged branch").is_some());
+            assert!(find_non_imperative("Moved files").is_some());
+            assert!(find_non_imperative("Renamed variable").is_some());
         }
 
         #[test]
         fn detects_present_continuous() {
-            assert!(is_non_imperative("Adding new feature"));
-            assert!(is_non_imperative("Fixing bug"));
-            assert!(is_non_imperative("Updating tests"));
-            assert!(is_non_imperative("Removing unused imports"));
-            assert!(is_non_imperative("feat: Implementing auth"));
+            assert!(find_non_imperative("Adding new feature").is_some());
+            assert!(find_non_imperative("Fixing bug").is_some());
+            assert!(find_non_imperative("Updating tests").is_some());
+            assert!(find_non_imperative("Removing unused imports").is_some());
+            assert!(find_non_imperative("feat: Implementing auth").is_some());
         }
 
         #[test]
         fn allows_imperative_mood() {
-            assert!(!is_non_imperative("Add new feature"));
-            assert!(!is_non_imperative("Fix bug in parser"));
-            assert!(!is_non_imperative("Update dependencies"));
-            assert!(!is_non_imperative("Remove unused code"));
-            assert!(!is_non_imperative("feat: Add user authentication"));
-            assert!(!is_non_imperative("fix: Resolve memory leak"));
+            assert!(find_non_imperative("Add new feature").is_none());
+            assert!(find_non_imperative("Fix bug in parser").is_none());
+            assert!(find_non_imperative("Update dependencies").is_none());
+            assert!(find_non_imperative("Remove unused code").is_none());
+            assert!(find_non_imperative("feat: Add user authentication").is_none());
+            assert!(find_non_imperative("fix: Resolve memory leak").is_none());
         }
 
         #[test]
         fn allows_imperative_with_conventional_prefix() {
-            assert!(!is_non_imperative("feat: Add new endpoint"));
-            assert!(!is_non_imperative("fix(api): Handle edge case"));
-            assert!(!is_non_imperative("docs: Update README"));
-            assert!(!is_non_imperative("refactor!: Simplify logic"));
+            assert!(find_non_imperative("feat: Add new endpoint").is_none());
+            assert!(find_non_imperative("fix(api): Handle edge case").is_none());
+            assert!(find_non_imperative("docs: Update README").is_none());
+            assert!(find_non_imperative("refactor!: Simplify logic").is_none());
         }
 
         #[test]
         fn case_insensitive() {
-            assert!(is_non_imperative("ADDED feature"));
-            assert!(is_non_imperative("Fixed BUG"));
-            assert!(is_non_imperative("UPDATING tests"));
+            assert!(find_non_imperative("ADDED feature").is_some());
+            assert!(find_non_imperative("Fixed BUG").is_some());
+            assert!(find_non_imperative("UPDATING tests").is_some());
         }
 
         #[test]
         fn does_not_match_mid_sentence() {
             // These should not trigger because the verb is not at the start
-            assert!(!is_non_imperative("feat: Add updated timestamp #123"));
-            assert!(!is_non_imperative("fix: Handle added complexity"));
+            assert!(find_non_imperative("feat: Add updated timestamp #123").is_none());
+            assert!(find_non_imperative("fix: Handle added complexity").is_none());
         }
     }
 
@@ -1159,19 +1390,27 @@ mod tests {
 
         #[test]
         fn findings_include_correct_severity() {
-            let commit = create_commit("WIP");
+            // Test WIP severity
+            let wip_commit = create_commit("WIP");
             let config = ValidationConfig::default();
-            let findings = validate_commit(&commit, &config);
+            let wip_findings = validate_commit(&wip_commit, &config);
 
-            // WIP should be Error severity by default
-            let wip_finding = findings
+            let wip_finding = wip_findings
                 .iter()
                 .find(|f| f.validation == Validation::WipCommit);
             assert!(wip_finding.is_some());
             assert_eq!(wip_finding.unwrap().severity, Severity::Error);
 
-            // ShortCommit should be Warning severity by default
-            let short_finding = findings
+            // WIP commits suppress ShortCommit check (priority rule)
+            assert!(!wip_findings
+                .iter()
+                .any(|f| f.validation == Validation::ShortCommit));
+
+            // Test ShortCommit severity with a non-WIP commit
+            let short_commit = create_commit("fix");
+            let short_findings = validate_commit(&short_commit, &config);
+
+            let short_finding = short_findings
                 .iter()
                 .find(|f| f.validation == Validation::ShortCommit);
             assert!(short_finding.is_some());
