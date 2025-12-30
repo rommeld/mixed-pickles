@@ -86,17 +86,18 @@ impl Validation {
             }
             Validation::InvalidFormat => {
                 let suggested_type = suggest_commit_type(subject);
-                format!("Use conventional format: '{}: <description>'", suggested_type)
+                format!(
+                    "Use conventional format: '{}: <description>'",
+                    suggested_type
+                )
             }
-            Validation::VagueLanguage => {
-                match find_vague_language(subject) {
-                    Some(vague_phrase) => format!(
-                        "'{}' lacks specifics - mention what and where",
-                        vague_phrase
-                    ),
-                    None => "Be specific about what changed and where".to_string(),
-                }
-            }
+            Validation::VagueLanguage => match find_vague_language(subject) {
+                Some(vague_phrase) => format!(
+                    "'{}' lacks specifics - mention what and where",
+                    vague_phrase
+                ),
+                None => "Be specific about what changed and where".to_string(),
+            },
             Validation::WipCommit => get_wip_suggestion(subject),
             Validation::NonImperative => {
                 match find_non_imperative(subject) {
@@ -106,7 +107,9 @@ impl Validation {
                         let after = if before.chars().next().is_some_and(|c| c.is_uppercase()) {
                             let mut chars = after.chars();
                             match chars.next() {
-                                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                                Some(first) => {
+                                    first.to_uppercase().collect::<String>() + chars.as_str()
+                                }
                                 None => after,
                             }
                         } else {
@@ -773,9 +776,7 @@ pub fn validate_commit(commit: &Commit, config: &ValidationConfig) -> Vec<Findin
 
     // Check for WIP commits first (highest priority)
     let is_wip = config.check_wip && is_wip_commit(subject);
-    if is_wip
-        && let Some(f) = check_wip(subject, config)
-    {
+    if is_wip && let Some(f) = check_wip(subject, config) {
         findings.push(f);
     }
 
@@ -1402,9 +1403,11 @@ mod tests {
             assert_eq!(wip_finding.unwrap().severity, Severity::Error);
 
             // WIP commits suppress ShortCommit check (priority rule)
-            assert!(!wip_findings
-                .iter()
-                .any(|f| f.validation == Validation::ShortCommit));
+            assert!(
+                !wip_findings
+                    .iter()
+                    .any(|f| f.validation == Validation::ShortCommit)
+            );
 
             // Test ShortCommit severity with a non-WIP commit
             let short_commit = create_commit("fix");
