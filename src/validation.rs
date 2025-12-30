@@ -676,41 +676,36 @@ pub fn validate_commit(commit: &Commit, config: &ValidationConfig) -> Vec<Findin
     let subject = &commit.subject;
 
     let is_wip = config.check_wip && is_wip_commit(subject);
-    if is_wip {
-        if let Some(f) = check_wip(subject, config) {
+    if is_wip
+        && let Some(f) = check_wip(subject, config) {
             findings.push(f);
         }
-    }
 
     let is_short = !is_wip && subject.len() <= config.threshold;
     if !is_wip {
         if let Some(f) = check_short(subject, config) {
             findings.push(f);
         }
-        if config.check_vague_language {
-            if let Some(f) = check_vague(subject, config) {
+        if config.check_vague_language
+            && let Some(f) = check_vague(subject, config) {
                 findings.push(f);
             }
-        }
     }
 
-    if config.require_issue_ref {
-        if let Some(f) = check_issue_reference(subject, config) {
+    if config.require_issue_ref
+        && let Some(f) = check_issue_reference(subject, config) {
             findings.push(f);
         }
-    }
 
-    if config.require_conventional_format {
-        if let Some(f) = check_conventional_format(subject, config) {
+    if config.require_conventional_format
+        && let Some(f) = check_conventional_format(subject, config) {
             findings.push(f);
         }
-    }
 
-    if config.check_imperative && !is_short {
-        if let Some(f) = check_imperative(subject, config) {
+    if config.check_imperative && !is_short
+        && let Some(f) = check_imperative(subject, config) {
             findings.push(f);
         }
-    }
 
     findings
 }
