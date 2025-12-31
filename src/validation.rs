@@ -474,7 +474,7 @@ impl ValidationConfig {
     ///     RuntimeError: If the file cannot be read or parsed
     #[staticmethod]
     fn from_file(path: String) -> PyResult<Self> {
-        use crate::config::{load_config, ConfigFile};
+        use crate::config::{ConfigFile, load_config};
         use std::path::PathBuf;
 
         let path_buf = PathBuf::from(&path);
@@ -1541,9 +1541,18 @@ mod tests {
             };
 
             config.apply_file_config(&file_config).unwrap();
-            assert_eq!(config.get_severity(&Validation::ShortCommit), Severity::Error);
-            assert_eq!(config.get_severity(&Validation::WipCommit), Severity::Warning);
-            assert_eq!(config.get_severity(&Validation::MissingReference), Severity::Ignore);
+            assert_eq!(
+                config.get_severity(&Validation::ShortCommit),
+                Severity::Error
+            );
+            assert_eq!(
+                config.get_severity(&Validation::WipCommit),
+                Severity::Warning
+            );
+            assert_eq!(
+                config.get_severity(&Validation::MissingReference),
+                Severity::Ignore
+            );
         }
 
         #[test]
@@ -1610,7 +1619,10 @@ mod tests {
             config.apply_file_config(&file_config).unwrap();
             assert_eq!(config.threshold, 75);
             assert!(!config.require_conventional_format);
-            assert_eq!(config.get_severity(&Validation::ShortCommit), Severity::Error);
+            assert_eq!(
+                config.get_severity(&Validation::ShortCommit),
+                Severity::Error
+            );
         }
     }
 

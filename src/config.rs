@@ -12,7 +12,9 @@ pub enum ConfigError {
     #[error("invalid TOML syntax: {0}")]
     Parse(#[from] toml::de::Error),
 
-    #[error("invalid validation name: '{0}' (valid: short, wip, reference, format, vague, imperative)")]
+    #[error(
+        "invalid validation name: '{0}' (valid: short, wip, reference, format, vague, imperative)"
+    )]
     InvalidValidation(String),
 
     #[error("invalid severity: '{0}' (valid: error, warning, info, ignore)")]
@@ -175,7 +177,10 @@ vague-language = "ignore"
         let config: PyProjectToml = toml::from_str(toml_str).unwrap();
         let tool_config = config.tool.unwrap().mixed_pickles.unwrap();
 
-        assert_eq!(tool_config.disable, vec!["short-commit", "missing-reference"]);
+        assert_eq!(
+            tool_config.disable,
+            vec!["short-commit", "missing-reference"]
+        );
 
         let severity = tool_config.severity.unwrap();
         assert_eq!(severity.short, Some("error".to_string()));

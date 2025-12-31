@@ -10,7 +10,7 @@ mod validation;
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
-use config::{find_config_file, load_config, ConfigFile};
+use config::{ConfigFile, find_config_file, load_config};
 use error::CLIError;
 use git::{count_commits, fetch_commits as git_fetch_commits, validate_repo_path};
 use output::print_results;
@@ -100,7 +100,7 @@ impl GitCLI {
             // User specified explicit config path
             if path.exists() {
                 // Determine type based on filename
-                if path.file_name().map_or(false, |n| n == "pyproject.toml") {
+                if path.file_name().is_some_and(|n| n == "pyproject.toml") {
                     return Some(ConfigFile::PyProjectToml(path.clone()));
                 } else {
                     return Some(ConfigFile::Dedicated(path.clone()));
@@ -111,9 +111,7 @@ impl GitCLI {
 
         // Auto-detect from repo path or current directory
         let start = self
-            .path
-            .as_ref()
-            .map(|p| p.as_path())
+            .path.as_deref()
             .unwrap_or(Path::new("."));
         find_config_file(start)
     }
@@ -122,17 +120,22 @@ impl GitCLI {
         let mut config = ValidationConfig::default();
 
         // Load config file unless disabled
-        if !self.no_config {
-            if let Some(config_file) = self.find_config() {
+        if !self.no_config
+            && let Some(config_file) = self.find_config() {
                 let file_config = load_config(&config_file)?;
                 config.apply_file_config(&file_config)?;
             }
-        }
 
         // Apply CLI overrides (takes precedence over file config)
         self.apply_cli_overrides(&mut config)?;
 
-        commit_analyzer(self.path.as_ref(), self.limit, self.quiet, self.strict, &config)
+        commit_analyzer(
+            self.path.as_ref(),
+            self.limit,
+            self.quiet,
+            self.strict,
+            &config,
+        )
     }
 }
 
@@ -230,9 +233,7 @@ fn analyze_commits(
         cfg
     } else if use_config {
         // Auto-discover and load config
-        let start_dir = path_buf
-            .as_ref()
-            .map(|p| p.as_path())
+        let start_dir = path_buf.as_deref()
             .unwrap_or(Path::new("."));
 
         let mut cfg = ValidationConfig::default();
