@@ -4,18 +4,42 @@ build-backend = "maturin"
 
 [project]
 name = "mixed-pickles"
+description = "A fast git commit message linter written in Rust"
+authors = [{ name = "Denny Holscher", email = "denny.holscher@gmail.com" }]
+readme = "README.md"
 requires-python = ">=3.9"
 dynamic = ["version"]
 license = "MIT"
+keywords = ["git", "commit", "linter", "conventional-commits", "rust"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+
+[project.urls]
+Repository = "https://github.com/rommeld/mixed-pickles"
+Changelog = "https://github.com/rommeld/mixed-pickles/blob/main/CHANGELOG.md"
+Issues = "https://github.com/rommeld/mixed-pickles/issues"
 
 [project.scripts]
 mixed-pickles = "mixed_pickles:main"
 
-[tool.maturin]
-module-name = "mixed_pickles"
-
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "maturin>=1.0,<2.0"]
+
+[tool.maturin]
+module-name = "mixed_pickles"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

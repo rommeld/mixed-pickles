@@ -25,7 +25,7 @@ cargo install mixed-pickles
 Or build from source:
 
 ```bash
-git clone https://github.com/your-org/mixed-pickles.git
+git clone https://github.com/rommeld/mixed-pickles.git
 cd mixed-pickles
 cargo build --release
 ```
