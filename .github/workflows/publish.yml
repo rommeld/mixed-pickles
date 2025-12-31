@@ -5,9 +5,27 @@ on:
         types: [published]
     workflow_dispatch:
 
+env:
+    CARGO_TERM_COLOR: always
+
 jobs:
+    test:
+        name: Test before publish
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: clippy
+            - uses: Swatinem/rust-cache@v2
+            - name: Clippy
+              run: cargo clippy --all-targets --all-features -- -D warnings
+            - name: Run tests
+              run: cargo test --all-features
+
     build-wheels:
         name: Build wheels on ${{ matrix.os }}
+        needs: [test]
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
@@ -47,6 +65,7 @@ jobs:
 
     build-sdist:
         name: Build source distribution
+        needs: [test]
         runs-on: ubuntu-latest
 
         steps:
