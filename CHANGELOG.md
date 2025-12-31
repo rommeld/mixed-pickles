@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- run tests before publishing to PyPI (504616e)
 - use has_analyzing_header helper to fix clippy (e4c4ee3)
 - handle singular/plural in commit issue messages (18b60cf, 48f4683)
 - delete reference in functions and types (5dcf168)
