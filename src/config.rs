@@ -83,22 +83,23 @@ impl AsRef<Path> for ConfigFile {
 /// Find a configuration file by walking up from the start directory.
 /// Checks for `.mixed-pickles.toml` first, then `pyproject.toml`.
 pub fn find_config_file(start_dir: &Path) -> Option<ConfigFile> {
-    let start = start_dir.canonicalize().unwrap_or_else(|_| start_dir.to_path_buf());
+    let start = start_dir
+        .canonicalize()
+        .unwrap_or_else(|_| start_dir.to_path_buf());
 
-    std::iter::successors(Some(start.as_path()), |p| p.parent())
-        .find_map(|dir| {
-            let dedicated = dir.join(DEDICATED_CONFIG);
-            if dedicated.exists() {
-                return Some(ConfigFile::Dedicated(dedicated));
-            }
+    std::iter::successors(Some(start.as_path()), |p| p.parent()).find_map(|dir| {
+        let dedicated = dir.join(DEDICATED_CONFIG);
+        if dedicated.exists() {
+            return Some(ConfigFile::Dedicated(dedicated));
+        }
 
-            let pyproject = dir.join(PYPROJECT_TOML);
-            if pyproject.exists() {
-                return Some(ConfigFile::PyProjectToml(pyproject));
-            }
+        let pyproject = dir.join(PYPROJECT_TOML);
+        if pyproject.exists() {
+            return Some(ConfigFile::PyProjectToml(pyproject));
+        }
 
-            None
-        })
+        None
+    })
 }
 
 /// Load configuration from a config file.
