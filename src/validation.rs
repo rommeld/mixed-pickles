@@ -8,6 +8,8 @@ use std::sync::LazyLock;
 use pyo3::prelude::*;
 use regex::Regex;
 
+use crate::config::{ConfigError, SeverityConfig, ToolConfig};
+
 static REFERENCE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(#\d+|gh-\d+|[A-Z]{2,}-\d+)").expect("Invalid reference regex")
 });
@@ -125,14 +127,24 @@ impl FromStr for Validation {
 #[pyclass(eq, eq_int)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Severity {
-    /// Finding blocks the operation (non-zero exit code).
     Error,
-    /// Finding is reported but doesn't block.
     Warning,
-    /// Informational finding.
     Info,
-    /// Finding is not reported.
     Ignore,
+}
+
+impl FromStr for Severity {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "error" => Ok(Severity::Error),
+            "warning" | "warn" => Ok(Severity::Warning),
+            "info" => Ok(Severity::Info),
+            "ignore" | "off" => Ok(Severity::Ignore),
+            _ => Err(format!("Unknown severity: {}", s)),
+        }
+    }
 }
 
 #[pymethods]
@@ -330,6 +342,69 @@ impl ValidationConfig {
         }
         Ok(())
     }
+
+    /// Apply configuration from a file (pyproject.toml or .mixed-pickles.toml).
+    pub fn apply_file_config(&mut self, config: &ToolConfig) -> Result<(), ConfigError> {
+        if let Some(threshold) = config.threshold {
+            self.threshold = threshold;
+        }
+
+        for name in &config.disable {
+            self.disable_validation(name)?;
+        }
+
+        if let Some(ref severity_config) = config.severity {
+            self.apply_severity_config(severity_config)?;
+        }
+
+        Ok(())
+    }
+
+    fn disable_validation(&mut self, name: &str) -> Result<(), ConfigError> {
+        match name.to_lowercase().replace('-', "").as_str() {
+            "shortcommit" | "short" => self.check_short = false,
+            "missingreference" | "reference" | "ref" => self.require_issue_ref = false,
+            "invalidformat" | "format" => self.require_conventional_format = false,
+            "vaguelanguage" | "vague" => self.check_vague_language = false,
+            "wipcommit" | "wip" => self.check_wip = false,
+            "nonimperative" | "imperative" => self.check_imperative = false,
+            _ => return Err(ConfigError::InvalidValidation(name.to_string())),
+        }
+        Ok(())
+    }
+
+    fn apply_severity_config(&mut self, config: &SeverityConfig) -> Result<(), ConfigError> {
+        if let Some(ref s) = config.short {
+            self.set_severity_from_str(Validation::ShortCommit, s)?;
+        }
+        if let Some(ref s) = config.wip {
+            self.set_severity_from_str(Validation::WipCommit, s)?;
+        }
+        if let Some(ref s) = config.reference {
+            self.set_severity_from_str(Validation::MissingReference, s)?;
+        }
+        if let Some(ref s) = config.format {
+            self.set_severity_from_str(Validation::InvalidFormat, s)?;
+        }
+        if let Some(ref s) = config.vague {
+            self.set_severity_from_str(Validation::VagueLanguage, s)?;
+        }
+        if let Some(ref s) = config.imperative {
+            self.set_severity_from_str(Validation::NonImperative, s)?;
+        }
+        Ok(())
+    }
+
+    fn set_severity_from_str(
+        &mut self,
+        validation: Validation,
+        severity_str: &str,
+    ) -> Result<(), ConfigError> {
+        let severity = Severity::from_str(severity_str)
+            .map_err(|_| ConfigError::InvalidSeverity(severity_str.to_string()))?;
+        self.severities.insert(validation, severity);
+        Ok(())
+    }
 }
 
 #[pymethods]
@@ -385,6 +460,76 @@ impl ValidationConfig {
     #[pyo3(name = "get_severity")]
     fn py_get_severity(&self, validation: Validation) -> Severity {
         self.get_severity(&validation)
+    }
+
+    /// Load configuration from a file.
+    ///
+    /// Args:
+    ///     path: Path to pyproject.toml or .mixed-pickles.toml
+    ///
+    /// Returns:
+    ///     ValidationConfig with settings from the file
+    ///
+    /// Raises:
+    ///     RuntimeError: If the file cannot be read or parsed
+    #[staticmethod]
+    fn from_file(path: String) -> PyResult<Self> {
+        use crate::config::{load_config, ConfigFile};
+        use std::path::PathBuf;
+
+        let path_buf = PathBuf::from(&path);
+        let config_file = if path.ends_with("pyproject.toml") {
+            ConfigFile::PyProjectToml(path_buf)
+        } else {
+            ConfigFile::Dedicated(path_buf)
+        };
+
+        let file_config = load_config(&config_file)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        let mut config = Self::default();
+        config
+            .apply_file_config(&file_config)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        Ok(config)
+    }
+
+    /// Discover and load configuration from a directory.
+    ///
+    /// Searches for pyproject.toml or .mixed-pickles.toml starting from
+    /// the given directory and walking up to parent directories.
+    ///
+    /// Args:
+    ///     path: Directory to start searching from (default: current directory)
+    ///
+    /// Returns:
+    ///     ValidationConfig with discovered settings, or defaults if no config found
+    ///
+    /// Raises:
+    ///     RuntimeError: If the config file exists but cannot be parsed
+    #[staticmethod]
+    #[pyo3(signature = (path=None))]
+    fn discover(path: Option<String>) -> PyResult<Self> {
+        use crate::config::{find_config_file, load_config};
+        use std::path::Path;
+
+        let start_dir = path
+            .as_ref()
+            .map(|p| Path::new(p.as_str()))
+            .unwrap_or(Path::new("."));
+
+        let mut config = Self::default();
+
+        if let Some(config_file) = find_config_file(start_dir) {
+            let file_config = load_config(&config_file)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+            config
+                .apply_file_config(&file_config)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        }
+
+        Ok(config)
     }
 
     fn __repr__(&self) -> String {
@@ -1349,6 +1494,157 @@ mod tests {
                 .find(|f| f.validation == Validation::MissingReference);
             assert!(finding.is_some());
             assert_eq!(finding.unwrap().severity, Severity::Error);
+        }
+    }
+
+    mod apply_file_config_tests {
+        use super::*;
+        use crate::config::{SeverityConfig, ToolConfig};
+
+        #[test]
+        fn applies_threshold() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                threshold: Some(50),
+                ..Default::default()
+            };
+
+            config.apply_file_config(&file_config).unwrap();
+            assert_eq!(config.threshold, 50);
+        }
+
+        #[test]
+        fn applies_disable_list() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                disable: vec!["short".to_string(), "wip".to_string()],
+                ..Default::default()
+            };
+
+            config.apply_file_config(&file_config).unwrap();
+            assert!(!config.check_short);
+            assert!(!config.check_wip);
+            assert!(config.check_vague_language); // unchanged
+        }
+
+        #[test]
+        fn applies_severity_overrides() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                severity: Some(SeverityConfig {
+                    short: Some("error".to_string()),
+                    wip: Some("warning".to_string()),
+                    reference: Some("ignore".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+
+            config.apply_file_config(&file_config).unwrap();
+            assert_eq!(config.get_severity(&Validation::ShortCommit), Severity::Error);
+            assert_eq!(config.get_severity(&Validation::WipCommit), Severity::Warning);
+            assert_eq!(config.get_severity(&Validation::MissingReference), Severity::Ignore);
+        }
+
+        #[test]
+        fn handles_hyphenated_validation_names() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                disable: vec!["short-commit".to_string(), "missing-reference".to_string()],
+                ..Default::default()
+            };
+
+            config.apply_file_config(&file_config).unwrap();
+            assert!(!config.check_short);
+            assert!(!config.require_issue_ref);
+        }
+
+        #[test]
+        fn rejects_invalid_validation_name() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                disable: vec!["nonexistent".to_string()],
+                ..Default::default()
+            };
+
+            let result = config.apply_file_config(&file_config);
+            assert!(result.is_err());
+            assert!(matches!(
+                result.unwrap_err(),
+                crate::config::ConfigError::InvalidValidation(_)
+            ));
+        }
+
+        #[test]
+        fn rejects_invalid_severity() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                severity: Some(SeverityConfig {
+                    short: Some("critical".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+
+            let result = config.apply_file_config(&file_config);
+            assert!(result.is_err());
+            assert!(matches!(
+                result.unwrap_err(),
+                crate::config::ConfigError::InvalidSeverity(_)
+            ));
+        }
+
+        #[test]
+        fn applies_all_config_options_together() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                threshold: Some(75),
+                strict: Some(true),
+                disable: vec!["format".to_string()],
+                severity: Some(SeverityConfig {
+                    short: Some("error".to_string()),
+                    ..Default::default()
+                }),
+            };
+
+            config.apply_file_config(&file_config).unwrap();
+            assert_eq!(config.threshold, 75);
+            assert!(!config.require_conventional_format);
+            assert_eq!(config.get_severity(&Validation::ShortCommit), Severity::Error);
+        }
+    }
+
+    mod severity_from_str_tests {
+        use super::*;
+
+        #[test]
+        fn parses_error() {
+            assert_eq!(Severity::from_str("error").unwrap(), Severity::Error);
+            assert_eq!(Severity::from_str("ERROR").unwrap(), Severity::Error);
+        }
+
+        #[test]
+        fn parses_warning() {
+            assert_eq!(Severity::from_str("warning").unwrap(), Severity::Warning);
+            assert_eq!(Severity::from_str("warn").unwrap(), Severity::Warning);
+        }
+
+        #[test]
+        fn parses_info() {
+            assert_eq!(Severity::from_str("info").unwrap(), Severity::Info);
+            assert_eq!(Severity::from_str("INFO").unwrap(), Severity::Info);
+        }
+
+        #[test]
+        fn parses_ignore() {
+            assert_eq!(Severity::from_str("ignore").unwrap(), Severity::Ignore);
+            assert_eq!(Severity::from_str("off").unwrap(), Severity::Ignore);
+        }
+
+        #[test]
+        fn rejects_invalid() {
+            assert!(Severity::from_str("critical").is_err());
+            assert!(Severity::from_str("").is_err());
         }
     }
 }

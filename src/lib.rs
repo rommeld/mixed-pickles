@@ -1,14 +1,16 @@
 //! Mixed Pickles - Git commit analyzer.
 
 mod commit;
+mod config;
 pub mod error;
 mod git;
 mod output;
 mod validation;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
+use config::{find_config_file, load_config, ConfigFile};
 use error::CLIError;
 use git::{count_commits, fetch_commits as git_fetch_commits, validate_repo_path};
 use output::print_results;
@@ -21,13 +23,27 @@ pub use validation::Validation;
 #[derive(Parser, Debug)]
 #[command(name = "mixed-pickles")]
 #[command(about = "Analyze git commits and find those with short messages")]
+#[command(after_help = "CONFIGURATION:
+    Settings can be specified in pyproject.toml under [tool.mixed-pickles]
+    or in a dedicated .mixed-pickles.toml file.
+
+    Example pyproject.toml:
+        [tool.mixed-pickles]
+        threshold = 50
+        disable = [\"format\", \"reference\"]
+
+        [tool.mixed-pickles.severity]
+        short = \"error\"
+        wip = \"warning\"
+
+    CLI arguments override configuration file settings.")]
 pub struct GitCLI {
     #[arg(long)]
     pub path: Option<PathBuf>,
     #[arg(short, long)]
     pub limit: Option<usize>,
-    #[arg(short, long, default_value_t = 30)]
-    pub threshold: usize,
+    #[arg(short, long)]
+    pub threshold: Option<usize>,
     #[arg(short, long)]
     pub quiet: bool,
     #[arg(long, value_name = "VALIDATIONS")]
@@ -38,14 +54,23 @@ pub struct GitCLI {
     pub ignore: Option<String>,
     #[arg(long, value_name = "VALIDATIONS")]
     pub disable: Option<String>,
+    /// Treat warnings as errors
     #[arg(long)]
     pub strict: bool,
+    /// Path to configuration file (default: auto-detect pyproject.toml)
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
+    /// Ignore configuration file
+    #[arg(long)]
+    pub no_config: bool,
 }
 
 impl GitCLI {
-    pub fn build_config(&self) -> Result<ValidationConfig, CLIError> {
-        let mut config = ValidationConfig::new();
-
+    /// Apply CLI argument overrides to an existing config.
+    fn apply_cli_overrides(&self, config: &mut ValidationConfig) -> Result<(), CLIError> {
+        if let Some(threshold) = self.threshold {
+            config.threshold = threshold;
+        }
         if let Some(ref disables) = self.disable {
             config
                 .parse_and_disable(disables)
@@ -66,27 +91,54 @@ impl GitCLI {
                 .parse_and_set(ignores, Severity::Ignore)
                 .map_err(CLIError::InvalidValidation)?;
         }
+        Ok(())
+    }
 
-        Ok(config)
+    /// Find config file: use --config if provided, otherwise auto-detect.
+    fn find_config(&self) -> Option<ConfigFile> {
+        if let Some(ref path) = self.config {
+            // User specified explicit config path
+            if path.exists() {
+                // Determine type based on filename
+                if path.file_name().map_or(false, |n| n == "pyproject.toml") {
+                    return Some(ConfigFile::PyProjectToml(path.clone()));
+                } else {
+                    return Some(ConfigFile::Dedicated(path.clone()));
+                }
+            }
+            return None;
+        }
+
+        // Auto-detect from repo path or current directory
+        let start = self
+            .path
+            .as_ref()
+            .map(|p| p.as_path())
+            .unwrap_or(Path::new("."));
+        find_config_file(start)
     }
 
     pub fn run(&self) -> Result<(), CLIError> {
-        let config = self.build_config()?;
-        commit_analyzer(
-            self.path.as_ref(),
-            self.limit,
-            self.threshold,
-            self.quiet,
-            self.strict,
-            &config,
-        )
+        let mut config = ValidationConfig::default();
+
+        // Load config file unless disabled
+        if !self.no_config {
+            if let Some(config_file) = self.find_config() {
+                let file_config = load_config(&config_file)?;
+                config.apply_file_config(&file_config)?;
+            }
+        }
+
+        // Apply CLI overrides (takes precedence over file config)
+        self.apply_cli_overrides(&mut config)?;
+
+        commit_analyzer(self.path.as_ref(), self.limit, self.quiet, self.strict, &config)
     }
 }
 
 pub fn commit_analyzer(
     path: Option<&PathBuf>,
     limit: Option<usize>,
-    threshold: usize,
     quiet: bool,
     strict: bool,
     config: &ValidationConfig,
@@ -98,10 +150,7 @@ pub fn commit_analyzer(
     let total_commits = count_commits(path)?;
     let commits = git_fetch_commits(path, limit)?;
 
-    let mut validation_config = config.clone();
-    validation_config.threshold = threshold;
-
-    let validation_results = validate_commits(&commits, &validation_config);
+    let validation_results = validate_commits(&commits, config);
     let analyzed_count = commits.len();
 
     let has_errors = validation_results.iter().any(|r| r.has_errors());
@@ -112,7 +161,7 @@ pub fn commit_analyzer(
             &validation_results,
             total_commits,
             analyzed_count,
-            threshold,
+            config.threshold,
             &path.cloned(),
         );
     }
@@ -155,7 +204,10 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 ///     limit: Number of commits to analyze (default: all)
 ///     quiet: Suppress output unless issues found (default: False)
 ///     strict: Treat warnings as errors (default: False)
-///     config: ValidationConfig object for customizing validation behavior
+///     config: ValidationConfig object for customizing validation behavior.
+///             If None and use_config=True, auto-discovers pyproject.toml.
+///     use_config: Whether to auto-load configuration from pyproject.toml (default: True).
+///                 Ignored if config is provided.
 ///
 /// Returns:
 ///     None on success
@@ -163,26 +215,40 @@ fn fetch_commits(path: Option<String>, limit: Option<usize>) -> PyResult<Vec<Com
 /// Raises:
 ///     RuntimeError: If validation issues are found or other errors occur
 #[pyfunction]
-#[pyo3(signature = (path=None, limit=None, quiet=false, strict=false, config=None))]
+#[pyo3(signature = (path=None, limit=None, quiet=false, strict=false, config=None, use_config=true))]
 fn analyze_commits(
     path: Option<String>,
     limit: Option<usize>,
     quiet: bool,
     strict: bool,
     config: Option<ValidationConfig>,
+    use_config: bool,
 ) -> PyResult<()> {
     let path_buf = path.map(PathBuf::from);
-    let validation_config = config.unwrap_or_default();
 
-    commit_analyzer(
-        path_buf.as_ref(),
-        limit,
-        validation_config.threshold,
-        quiet,
-        strict,
-        &validation_config,
-    )
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    let validation_config = if let Some(cfg) = config {
+        cfg
+    } else if use_config {
+        // Auto-discover and load config
+        let start_dir = path_buf
+            .as_ref()
+            .map(|p| p.as_path())
+            .unwrap_or(Path::new("."));
+
+        let mut cfg = ValidationConfig::default();
+        if let Some(config_file) = find_config_file(start_dir) {
+            let file_config = load_config(&config_file)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+            cfg.apply_file_config(&file_config)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        }
+        cfg
+    } else {
+        ValidationConfig::default()
+    };
+
+    commit_analyzer(path_buf.as_ref(), limit, quiet, strict, &validation_config)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 /// CLI entry point. Exits with code 1 if validation issues are found.

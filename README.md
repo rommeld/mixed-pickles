@@ -70,7 +70,7 @@ mixed-pickles --quiet
 ```python
 import mixed_pickles
 
-# Basic analysis (raises RuntimeError on issues)
+# Basic analysis - auto-loads pyproject.toml config
 mixed_pickles.analyze_commits()
 
 # Analyze with options
@@ -81,7 +81,18 @@ mixed_pickles.analyze_commits(
     strict=True         # Treat warnings as errors
 )
 
-# Custom configuration
+# Disable auto-loading of config file
+mixed_pickles.analyze_commits(use_config=False)
+
+# Load config from pyproject.toml or .mixed-pickles.toml
+config = mixed_pickles.ValidationConfig.discover()
+config = mixed_pickles.ValidationConfig.discover("/path/to/project")
+
+# Load config from specific file
+config = mixed_pickles.ValidationConfig.from_file("pyproject.toml")
+config = mixed_pickles.ValidationConfig.from_file(".mixed-pickles.toml")
+
+# Manual configuration
 config = mixed_pickles.ValidationConfig(
     threshold=50,                    # Minimum message length
     require_issue_ref=False,         # Disable issue reference check
@@ -156,8 +167,59 @@ repos:
 | `--warn <LIST>`    | Validations to treat as warnings             |
 | `--ignore <LIST>`  | Validations to skip reporting                |
 | `--disable <LIST>` | Validations to disable entirely              |
+| `--config <PATH>`  | Path to configuration file                   |
+| `--no-config`      | Ignore configuration file                    |
 
 Validation aliases for CLI: `short`, `ref`, `format`, `vague`, `wip`, `imperative`
+
+## Configuration
+
+Configure mixed-pickles via `pyproject.toml` for project-specific settings:
+
+```toml
+[tool.mixed-pickles]
+# Minimum commit message length (default: 30)
+threshold = 50
+
+# Disable specific validations entirely
+disable = ["reference", "format"]
+
+# Override severity levels
+[tool.mixed-pickles.severity]
+wip = "error"          # Block on WIP commits (default)
+short = "warning"      # Warn but allow (default)
+vague = "ignore"       # Don't report
+reference = "info"     # Informational only (default)
+```
+
+Or use a dedicated `.mixed-pickles.toml` file (takes precedence over `pyproject.toml`):
+
+```toml
+threshold = 50
+disable = ["format"]
+
+[severity]
+short = "error"
+```
+
+### Configuration Precedence
+
+Settings are applied in this order (later overrides earlier):
+
+1. **Defaults** - Built-in default values
+2. **Config file** - `pyproject.toml` or `.mixed-pickles.toml`
+3. **CLI arguments** - Command-line flags
+
+### Available Validations
+
+| Name | Aliases | Default | Description |
+|------|---------|---------|-------------|
+| `short` | `short-commit` | warning | Message below threshold |
+| `wip` | `wip-commit` | error | WIP/fixup/squash markers |
+| `reference` | `ref`, `missing-reference` | info | Missing issue reference |
+| `format` | `invalid-format` | info | Not conventional commits |
+| `vague` | `vague-language` | warning | Generic descriptions |
+| `imperative` | `non-imperative` | warning | Past/continuous tense |
 
 ## Severity Levels
 

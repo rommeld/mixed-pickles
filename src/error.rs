@@ -2,6 +2,8 @@
 use std::{io, path::PathBuf};
 use thiserror::Error;
 
+use crate::config::ConfigError;
+
 #[derive(Error, Debug)]
 #[allow(dead_code)]
 pub enum CLIError {
@@ -19,4 +21,6 @@ pub enum CLIError {
     ValidationFailed(usize),
     #[error("Invalid validation type: {0}")]
     InvalidValidation(String),
+    #[error("Configuration error: {0}")]
+    Config(#[from] ConfigError),
 }

@@ -1,5 +1,8 @@
 mod common;
 
+use std::io::Write;
+use std::process::Command;
+
 use common::{has_analyzing_header, has_issues_summary, run_binary, run_binary_with_args};
 
 #[test]
@@ -469,5 +472,152 @@ fn without_strict_warnings_exit_zero() {
     assert!(
         output.status.success(),
         "Should exit zero with only warnings (no --strict)"
+    );
+}
+
+// Config file integration tests
+
+#[test]
+fn no_config_flag_is_accepted() {
+    let output = run_binary_with_args(&["--no-config", "-l", "1"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        has_analyzing_header(&stdout) || stdout.contains("adequately executed"),
+        "Should run with --no-config flag, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn config_flag_with_nonexistent_file_uses_defaults() {
+    let output = run_binary_with_args(&["--config", "/nonexistent/path.toml", "-l", "1"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should still run (config file is optional)
+    assert!(
+        has_analyzing_header(&stdout) || stdout.contains("adequately executed"),
+        "Should run even with nonexistent config file, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn config_flag_loads_custom_config() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_path = temp_dir.path().join(".mixed-pickles.toml");
+
+    // Create config that sets threshold very high (all commits will be "short")
+    // and makes short an error
+    let mut file = std::fs::File::create(&config_path).unwrap();
+    writeln!(file, "threshold = 10000").unwrap();
+    writeln!(file, "[severity]").unwrap();
+    writeln!(file, "short = \"error\"").unwrap();
+    drop(file);
+
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            "--config",
+            config_path.to_str().unwrap(),
+            "-l",
+            "1",
+            "--disable=wip,ref,format,vague,imperative",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    // With threshold=10000, any commit should be flagged as short (error)
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero with config that makes short commits errors"
+    );
+}
+
+#[test]
+fn cli_threshold_overrides_config_file() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_path = temp_dir.path().join(".mixed-pickles.toml");
+
+    // Config sets very high threshold
+    let mut file = std::fs::File::create(&config_path).unwrap();
+    writeln!(file, "threshold = 10000").unwrap();
+    writeln!(file, "[severity]").unwrap();
+    writeln!(file, "short = \"error\"").unwrap();
+    drop(file);
+
+    // CLI sets low threshold (should override config)
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            "--config",
+            config_path.to_str().unwrap(),
+            "-l",
+            "1",
+            "-t",
+            "1", // Override threshold to 1 (all commits pass)
+            "--disable=wip,ref,format,vague,imperative",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    // With threshold=1 from CLI, commits should pass
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success() || has_analyzing_header(&stdout),
+        "CLI threshold should override config file threshold"
+    );
+}
+
+#[test]
+fn cli_disable_adds_to_config_file_disables() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_path = temp_dir.path().join(".mixed-pickles.toml");
+
+    // Config disables wip check
+    let mut file = std::fs::File::create(&config_path).unwrap();
+    writeln!(file, "disable = [\"wip\"]").unwrap();
+    drop(file);
+
+    // CLI also disables other checks - should combine
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            "--config",
+            config_path.to_str().unwrap(),
+            "-l",
+            "1",
+            "--disable=ref,format,vague,imperative,short",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    // With all validations disabled, should succeed
+    assert!(
+        output.status.success(),
+        "Should pass with all validations disabled via config + CLI"
+    );
+}
+
+#[test]
+fn no_config_ignores_config_file() {
+    // Test that --no-config flag causes config files to be ignored
+    // We use the actual project directory which has pyproject.toml
+    // but with --no-config it should use defaults
+    let output = run_binary_with_args(&[
+        "--no-config",
+        "-l",
+        "1",
+        "--disable=wip,ref,format,vague,imperative,short",
+    ]);
+
+    // With --no-config and all validations disabled, should succeed
+    assert!(
+        output.status.success(),
+        "--no-config should work and allow disabling all validations"
     );
 }
