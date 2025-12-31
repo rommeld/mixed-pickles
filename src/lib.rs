@@ -110,9 +110,7 @@ impl GitCLI {
         }
 
         // Auto-detect from repo path or current directory
-        let start = self
-            .path.as_deref()
-            .unwrap_or(Path::new("."));
+        let start = self.path.as_deref().unwrap_or(Path::new("."));
         find_config_file(start)
     }
 
@@ -121,10 +119,11 @@ impl GitCLI {
 
         // Load config file unless disabled
         if !self.no_config
-            && let Some(config_file) = self.find_config() {
-                let file_config = load_config(&config_file)?;
-                config.apply_file_config(&file_config)?;
-            }
+            && let Some(config_file) = self.find_config()
+        {
+            let file_config = load_config(&config_file)?;
+            config.apply_file_config(&file_config)?;
+        }
 
         // Apply CLI overrides (takes precedence over file config)
         self.apply_cli_overrides(&mut config)?;
@@ -233,8 +232,7 @@ fn analyze_commits(
         cfg
     } else if use_config {
         // Auto-discover and load config
-        let start_dir = path_buf.as_deref()
-            .unwrap_or(Path::new("."));
+        let start_dir = path_buf.as_deref().unwrap_or(Path::new("."));
 
         let mut cfg = ValidationConfig::default();
         if let Some(config_file) = find_config_file(start_dir) {
