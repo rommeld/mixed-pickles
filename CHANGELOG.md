@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- improve idiomatic Rust patterns in config handling (69f3dbb)
 - improve CLI output format with better commit details (b60e345)
 - simplify analyze_commits Python API (2df7e76)
 - reduce number of validated commits to cli --limit (6bec626)
