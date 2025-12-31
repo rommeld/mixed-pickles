@@ -72,31 +72,33 @@ pub enum ConfigFile {
     Dedicated(PathBuf),
 }
 
+impl AsRef<Path> for ConfigFile {
+    fn as_ref(&self) -> &Path {
+        match self {
+            ConfigFile::PyProjectToml(p) | ConfigFile::Dedicated(p) => p,
+        }
+    }
+}
+
 /// Find a configuration file by walking up from the start directory.
 /// Checks for `.mixed-pickles.toml` first, then `pyproject.toml`.
 pub fn find_config_file(start_dir: &Path) -> Option<ConfigFile> {
-    let mut current = start_dir.to_path_buf();
+    let start = start_dir.canonicalize().unwrap_or_else(|_| start_dir.to_path_buf());
 
-    if let Ok(canonical) = current.canonicalize() {
-        current = canonical;
-    }
+    std::iter::successors(Some(start.as_path()), |p| p.parent())
+        .find_map(|dir| {
+            let dedicated = dir.join(DEDICATED_CONFIG);
+            if dedicated.exists() {
+                return Some(ConfigFile::Dedicated(dedicated));
+            }
 
-    loop {
-        let dedicated_path = current.join(DEDICATED_CONFIG);
-        if dedicated_path.exists() {
-            return Some(ConfigFile::Dedicated(dedicated_path));
-        }
+            let pyproject = dir.join(PYPROJECT_TOML);
+            if pyproject.exists() {
+                return Some(ConfigFile::PyProjectToml(pyproject));
+            }
 
-        let pyproject_path = current.join(PYPROJECT_TOML);
-        if pyproject_path.exists() {
-            return Some(ConfigFile::PyProjectToml(pyproject_path));
-        }
-
-        match current.parent() {
-            Some(parent) => current = parent.to_path_buf(),
-            None => return None,
-        }
-    }
+            None
+        })
 }
 
 /// Load configuration from a config file.

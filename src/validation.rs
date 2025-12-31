@@ -374,23 +374,19 @@ impl ValidationConfig {
     }
 
     fn apply_severity_config(&mut self, config: &SeverityConfig) -> Result<(), ConfigError> {
-        if let Some(ref s) = config.short {
-            self.set_severity_from_str(Validation::ShortCommit, s)?;
-        }
-        if let Some(ref s) = config.wip {
-            self.set_severity_from_str(Validation::WipCommit, s)?;
-        }
-        if let Some(ref s) = config.reference {
-            self.set_severity_from_str(Validation::MissingReference, s)?;
-        }
-        if let Some(ref s) = config.format {
-            self.set_severity_from_str(Validation::InvalidFormat, s)?;
-        }
-        if let Some(ref s) = config.vague {
-            self.set_severity_from_str(Validation::VagueLanguage, s)?;
-        }
-        if let Some(ref s) = config.imperative {
-            self.set_severity_from_str(Validation::NonImperative, s)?;
+        let mappings: [(&Option<String>, Validation); 6] = [
+            (&config.short, Validation::ShortCommit),
+            (&config.wip, Validation::WipCommit),
+            (&config.reference, Validation::MissingReference),
+            (&config.format, Validation::InvalidFormat),
+            (&config.vague, Validation::VagueLanguage),
+            (&config.imperative, Validation::NonImperative),
+        ];
+
+        for (severity_opt, validation) in mappings {
+            if let Some(s) = severity_opt {
+                self.set_severity_from_str(validation, s)?;
+            }
         }
         Ok(())
     }
