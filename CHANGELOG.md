@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- add PyPI publishing workflow and package metadata (f5ab923)
 - add pyproject.toml configuration support (8fd491d)
 - add NonImperative validation to detect commit messages that do not use imperative mood (7302698)
 - add WIPCommit validation to detect wip commits (671e865)
