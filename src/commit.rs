@@ -1,4 +1,4 @@
-//! Commit struct.
+//! Commit struct creation and validation. 
 
 use pyo3::prelude::*;
 
