@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "mixed-pickles"
 description = "A fast git commit message linter written in Rust"
-authors = [{ name = "Denny Holscher", email = "denny.holscher@gmail.com" }]
+authors = [{ name = "Denny Rommel", email = "rommel.denny@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.9"
 dynamic = ["version"]
