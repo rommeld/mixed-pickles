@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-01-01
+
 ### Changed
 
 - modify package author information (cdb13e6)
