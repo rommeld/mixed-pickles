@@ -3,6 +3,7 @@ name = "mixed-pickles"
 version = "0.2.0"
 edition = "2024"
 license = "MIT"
+authors = ["Denny Rommel <rommel.denny@gmail.com>"]
 
 [lib]
 name = "mixed_pickles"
