@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- modify package author information (cdb13e6)
+
 ## [0.2.0] - 2025-12-31
 
 ### Documentation
