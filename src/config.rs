@@ -42,6 +42,7 @@ pub struct ToolConfig {
     pub strict: Option<bool>,
     pub disable: Vec<String>,
     pub severity: Option<SeverityConfig>,
+    pub branch: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -138,6 +139,7 @@ mod tests {
         assert!(tool_config.strict.is_none());
         assert!(tool_config.disable.is_empty());
         assert!(tool_config.severity.is_none());
+        assert!(tool_config.branch.is_empty());
     }
 
     #[test]
@@ -222,6 +224,30 @@ severity = { short = "error", wip = "warning" }
 
         assert_eq!(severity.short, Some("error".to_string()));
         assert_eq!(severity.wip, Some("warning".to_string()));
+    }
+
+    #[test]
+    fn test_parse_branch_config() {
+        let toml_str = r#"
+[tool.mixed-pickles]
+branch = ["main", "develop", "release/*"]
+"#;
+        let config: PyProjectToml = toml::from_str(toml_str).unwrap();
+        let tool_config = config.tool.unwrap().mixed_pickles.unwrap();
+
+        assert_eq!(tool_config.branch, vec!["main", "develop", "release/*"]);
+    }
+
+    #[test]
+    fn test_parse_single_branch() {
+        let toml_str = r#"
+[tool.mixed-pickles]
+branch = ["main"]
+"#;
+        let config: PyProjectToml = toml::from_str(toml_str).unwrap();
+        let tool_config = config.tool.unwrap().mixed_pickles.unwrap();
+
+        assert_eq!(tool_config.branch, vec!["main"]);
     }
 
     #[test]

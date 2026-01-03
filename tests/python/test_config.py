@@ -200,3 +200,63 @@ class TestAnalyzeCommitsWithConfig:
         )
         # Even with high threshold, Ignore severity means no error
         mixed_pickles.analyze_commits(limit=1, config=config)
+
+
+class TestValidationConfigBranches:
+    """Tests for branch filtering in ValidationConfig."""
+
+    def test_config_default_branches_empty(self):
+        """Default branches should be empty (run on all branches)."""
+        config = mixed_pickles.ValidationConfig()
+        assert config.branches == []
+
+    def test_config_with_branches(self):
+        """Should accept branches in constructor."""
+        config = mixed_pickles.ValidationConfig(branches=["main", "develop", "feature/*"])
+        assert config.branches == ["main", "develop", "feature/*"]
+
+    def test_config_branches_mutable(self):
+        """Should allow modifying branches after creation."""
+        config = mixed_pickles.ValidationConfig()
+        config.branches = ["main", "release/*"]
+        assert config.branches == ["main", "release/*"]
+
+    def test_config_with_branches_and_other_options(self):
+        """Should accept branches with other options."""
+        config = mixed_pickles.ValidationConfig(
+            threshold=50,
+            branches=["main", "develop"],
+            require_issue_ref=False,
+        )
+        assert config.threshold == 50
+        assert config.branches == ["main", "develop"]
+        assert config.require_issue_ref is False
+
+    def test_config_repr_includes_branches(self):
+        """Repr should include branches."""
+        config = mixed_pickles.ValidationConfig(branches=["main"])
+        repr_str = repr(config)
+        assert "branches" in repr_str
+        assert "main" in repr_str
+
+    def test_analyze_with_non_matching_branch_succeeds(self):
+        """Should succeed silently when branch doesn't match."""
+        config = mixed_pickles.ValidationConfig(
+            branches=["nonexistent-branch-xyz-12345"],
+        )
+        # Should succeed because branch filter skips validation
+        mixed_pickles.analyze_commits(limit=5, config=config)
+
+    def test_analyze_with_empty_branches_runs_normally(self):
+        """Empty branches should run validation normally."""
+        config = mixed_pickles.ValidationConfig(
+            branches=[],
+            require_issue_ref=False,
+            require_conventional_format=False,
+            check_vague_language=False,
+            check_wip=False,
+            check_imperative=False,
+            threshold=0,
+        )
+        # With all checks disabled, should pass
+        mixed_pickles.analyze_commits(limit=5, config=config)

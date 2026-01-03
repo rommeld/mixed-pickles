@@ -1,5 +1,6 @@
 //! Mixed Pickles - Git commit analyzer.
 
+mod branch;
 mod commit;
 mod config;
 pub mod error;
@@ -31,12 +32,23 @@ pub use validation::Validation;
         [tool.mixed-pickles]
         threshold = 50
         disable = [\"format\", \"reference\"]
+        branch = [\"main\", \"develop\", \"release/*\"]
 
         [tool.mixed-pickles.severity]
         short = \"error\"
         wip = \"warning\"
 
-    CLI arguments override configuration file settings.")]
+    CLI arguments override configuration file settings.
+
+BRANCH FILTERING:
+    Use --branch to run validations only on specific branches.
+    Supports glob patterns: *, ?, **
+
+    Examples:
+        --branch main                   # Only on main branch
+        --branch main --branch develop  # On main or develop
+        --branch \"feature/*\"            # Any feature branch
+        --branch \"release/**\"           # Any nested release branch")]
 pub struct GitCLI {
     #[arg(long)]
     pub path: Option<PathBuf>,
@@ -63,6 +75,10 @@ pub struct GitCLI {
     /// Ignore configuration file
     #[arg(long)]
     pub no_config: bool,
+    /// Only run validation on specified branches (supports glob patterns like "feature/*").
+    /// Can be specified multiple times.
+    #[arg(long, value_name = "PATTERN")]
+    pub branch: Vec<String>,
 }
 
 impl GitCLI {
@@ -90,6 +106,9 @@ impl GitCLI {
             config
                 .parse_and_set(ignores, Severity::Ignore)
                 .map_err(CLIError::InvalidValidation)?;
+        }
+        if !self.branch.is_empty() {
+            config.branches = self.branch.clone();
         }
         Ok(())
     }
@@ -127,6 +146,31 @@ impl GitCLI {
 
         // Apply CLI overrides (takes precedence over file config)
         self.apply_cli_overrides(&mut config)?;
+
+        // Check if we should run based on branch filter
+        if !config.branches.is_empty() {
+            match branch::get_current_branch(self.path.as_ref())? {
+                Some(current_branch) => {
+                    if !branch::matches_any_pattern(&current_branch, &config.branches) {
+                        // Branch doesn't match - skip validation
+                        if !self.quiet {
+                            eprintln!(
+                                "Skipping validation: branch '{}' does not match patterns {:?}",
+                                current_branch, config.branches
+                            );
+                        }
+                        return Ok(());
+                    }
+                }
+                None => {
+                    // Detached HEAD state - skip validation
+                    if !self.quiet {
+                        eprintln!("Skipping validation: detached HEAD state");
+                    }
+                    return Ok(());
+                }
+            }
+        }
 
         commit_analyzer(
             self.path.as_ref(),
@@ -245,6 +289,25 @@ fn analyze_commits(
     } else {
         ValidationConfig::default()
     };
+
+    // Check if we should run based on branch filter
+    if !validation_config.branches.is_empty() {
+        let current_branch = branch::get_current_branch(path_buf.as_ref())
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match current_branch {
+            Some(branch_name) => {
+                if !branch::matches_any_pattern(&branch_name, &validation_config.branches) {
+                    // Branch doesn't match - skip validation silently
+                    return Ok(());
+                }
+            }
+            None => {
+                // Detached HEAD state - skip validation
+                return Ok(());
+            }
+        }
+    }
 
     commit_analyzer(path_buf.as_ref(), limit, quiet, strict, &validation_config)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))

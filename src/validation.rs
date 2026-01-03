@@ -213,6 +213,8 @@ pub struct ValidationConfig {
     pub check_wip: bool,
     #[pyo3(get, set)]
     pub check_imperative: bool,
+    #[pyo3(get, set)]
+    pub branches: Vec<String>,
 }
 
 impl Default for ValidationConfig {
@@ -233,6 +235,7 @@ impl Default for ValidationConfig {
             check_vague_language: true,
             check_wip: true,
             check_imperative: true,
+            branches: Vec::new(),
         }
     }
 }
@@ -357,6 +360,10 @@ impl ValidationConfig {
             self.apply_severity_config(severity_config)?;
         }
 
+        if !config.branch.is_empty() {
+            self.branches = config.branch.clone();
+        }
+
         Ok(())
     }
 
@@ -415,6 +422,7 @@ impl ValidationConfig {
     ///     check_vague_language: Check for vague descriptions (default: True)
     ///     check_wip: Check for WIP/fixup commits (default: True)
     ///     check_imperative: Check for imperative mood (default: True)
+    ///     branches: Branch patterns to filter validation (default: empty = all branches)
     #[new]
     #[pyo3(signature = (
         threshold=30,
@@ -423,7 +431,8 @@ impl ValidationConfig {
         require_conventional_format=true,
         check_vague_language=true,
         check_wip=true,
-        check_imperative=true
+        check_imperative=true,
+        branches=None
     ))]
     fn py_new(
         threshold: usize,
@@ -433,6 +442,7 @@ impl ValidationConfig {
         check_vague_language: bool,
         check_wip: bool,
         check_imperative: bool,
+        branches: Option<Vec<String>>,
     ) -> Self {
         Self {
             threshold,
@@ -442,6 +452,7 @@ impl ValidationConfig {
             check_vague_language,
             check_wip,
             check_imperative,
+            branches: branches.unwrap_or_default(),
             ..Default::default()
         }
     }
@@ -530,13 +541,14 @@ impl ValidationConfig {
 
     fn __repr__(&self) -> String {
         format!(
-            "ValidationConfig(threshold={}, require_issue_ref={}, require_conventional_format={}, check_vague_language={}, check_wip={}, check_imperative={})",
+            "ValidationConfig(threshold={}, require_issue_ref={}, require_conventional_format={}, check_vague_language={}, check_wip={}, check_imperative={}, branches={:?})",
             self.threshold,
             self.require_issue_ref,
             self.require_conventional_format,
             self.check_vague_language,
             self.check_wip,
-            self.check_imperative
+            self.check_imperative,
+            self.branches
         )
     }
 }
@@ -1610,6 +1622,7 @@ mod tests {
                     short: Some("error".to_string()),
                     ..Default::default()
                 }),
+                branch: vec!["main".to_string()],
             };
 
             config.apply_file_config(&file_config).unwrap();
@@ -1619,6 +1632,35 @@ mod tests {
                 config.get_severity(&Validation::ShortCommit),
                 Severity::Error
             );
+            assert_eq!(config.branches, vec!["main"]);
+        }
+
+        #[test]
+        fn applies_branch_config() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                branch: vec![
+                    "main".to_string(),
+                    "develop".to_string(),
+                    "feature/*".to_string(),
+                ],
+                ..Default::default()
+            };
+
+            config.apply_file_config(&file_config).unwrap();
+            assert_eq!(config.branches, vec!["main", "develop", "feature/*"]);
+        }
+
+        #[test]
+        fn empty_branch_keeps_default() {
+            let mut config = ValidationConfig::default();
+            let file_config = ToolConfig {
+                branch: vec![],
+                ..Default::default()
+            };
+
+            config.apply_file_config(&file_config).unwrap();
+            assert!(config.branches.is_empty());
         }
     }
 

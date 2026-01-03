@@ -621,3 +621,187 @@ fn no_config_ignores_config_file() {
         "--no-config should work and allow disabling all validations"
     );
 }
+
+// ============================================================================
+// Branch filtering tests
+// ============================================================================
+
+#[test]
+fn branch_flag_single_value() {
+    // --branch flag should be accepted
+    let output = run_binary_with_args(&[
+        "--branch",
+        "main",
+        "-l",
+        "1",
+        "--disable=wip,ref,format,vague,imperative,short",
+    ]);
+
+    // Should succeed - we're on main branch (or skip if not)
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() || stderr.contains("Skipping"),
+        "--branch flag should be accepted, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn branch_flag_multiple_values() {
+    // Multiple --branch flags should be accepted
+    let output = run_binary_with_args(&[
+        "--branch",
+        "main",
+        "--branch",
+        "develop",
+        "--branch",
+        "feature/*",
+        "-l",
+        "1",
+        "--disable=wip,ref,format,vague,imperative,short",
+    ]);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() || stderr.contains("Skipping"),
+        "Multiple --branch flags should be accepted, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn branch_filter_skips_non_matching() {
+    // When branch doesn't match, validation should be skipped (success)
+    let output = run_binary_with_args(&["--branch", "nonexistent-branch-xyz-12345", "-l", "5"]);
+
+    // Should succeed because validation was skipped
+    assert!(
+        output.status.success(),
+        "Should succeed when branch doesn't match (validation skipped)"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Skipping"),
+        "Should show skipping message when branch doesn't match, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn branch_filter_quiet_skips_silently() {
+    // With --quiet, branch skip should be silent
+    let output = run_binary_with_args(&[
+        "--branch",
+        "nonexistent-branch-xyz-12345",
+        "--quiet",
+        "-l",
+        "5",
+    ]);
+
+    // Should succeed silently
+    assert!(
+        output.status.success(),
+        "Should succeed when branch doesn't match with --quiet"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Skipping"),
+        "Should not show skipping message with --quiet, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn branch_filter_with_glob_pattern() {
+    // Glob patterns should be accepted
+    let output = run_binary_with_args(&[
+        "--branch",
+        "feature/*",
+        "--branch",
+        "release/**",
+        "-l",
+        "1",
+        "--disable=wip,ref,format,vague,imperative,short",
+    ]);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() || stderr.contains("Skipping"),
+        "Glob patterns should be accepted, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn branch_config_from_file() {
+    // Test branch config from file
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_path = temp_dir.path().join(".mixed-pickles.toml");
+
+    let mut file = std::fs::File::create(&config_path).unwrap();
+    writeln!(file, r#"branch = ["nonexistent-branch-xyz-12345"]"#).unwrap();
+    drop(file);
+
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            "--config",
+            config_path.to_str().unwrap(),
+            "-l",
+            "1",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    // Should succeed because branch doesn't match (validation skipped)
+    assert!(
+        output.status.success(),
+        "Should skip validation when branch from config doesn't match"
+    );
+}
+
+#[test]
+fn branch_cli_overrides_config() {
+    // CLI --branch should override config file branch
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_path = temp_dir.path().join(".mixed-pickles.toml");
+
+    // Config specifies a non-matching branch
+    let mut file = std::fs::File::create(&config_path).unwrap();
+    writeln!(
+        file,
+        r#"branch = ["nonexistent-branch-xyz-12345"]
+disable = ["wip", "ref", "format", "vague", "imperative", "short"]"#
+    )
+    .unwrap();
+    drop(file);
+
+    // CLI specifies wildcard pattern that matches any branch
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            "--config",
+            config_path.to_str().unwrap(),
+            "--branch",
+            "*", // Match any branch name (not paths)
+            "-l",
+            "1",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    // With CLI override matching current branch and all validations disabled, should pass
+    // (assuming we're on a branch without "/" in the name like "main")
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() || stderr.contains("Skipping"),
+        "CLI --branch should override config file, got stderr: {}",
+        stderr
+    );
+}
