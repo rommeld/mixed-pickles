@@ -63,6 +63,10 @@ mixed-pickles --error short,vague --ignore ref
 
 # Quiet mode (output only on issues)
 mixed-pickles --quiet
+
+# Run only on specific branches (supports glob patterns)
+mixed-pickles --branch main --branch develop
+mixed-pickles --branch "feature/*" --branch "release/**"
 ```
 
 ### Python API
@@ -99,7 +103,14 @@ config = mixed_pickles.ValidationConfig(
     require_conventional_format=False,
     check_vague_language=True,
     check_wip=True,
-    check_imperative=True
+    check_imperative=True,
+    branches=["main", "develop"]     # Only validate on these branches
+)
+mixed_pickles.analyze_commits(config=config)
+
+# Branch filtering with glob patterns
+config = mixed_pickles.ValidationConfig(
+    branches=["main", "release/*", "hotfix/**"]
 )
 mixed_pickles.analyze_commits(config=config)
 
@@ -161,6 +172,7 @@ repos:
 | `--path <PATH>`    | Repository path (default: current directory) |
 | `--limit <N>`      | Max commits to analyze                       |
 | `--threshold <N>`  | Minimum message length (default: 30)         |
+| `--branch <PATTERN>` | Only validate on matching branches (repeatable, supports globs) |
 | `--quiet`, `-q`    | Suppress output unless issues found          |
 | `--strict`         | Treat warnings as errors                     |
 | `--error <LIST>`   | Validations to treat as errors               |
@@ -181,6 +193,10 @@ Configure mixed-pickles via `pyproject.toml` for project-specific settings:
 # Minimum commit message length (default: 30)
 threshold = 50
 
+# Only validate on specific branches (supports glob patterns)
+# Empty = validate on all branches (default)
+branch = ["main", "develop", "release/*"]
+
 # Disable specific validations entirely
 disable = ["reference", "format"]
 
@@ -196,6 +212,7 @@ Or use a dedicated `.mixed-pickles.toml` file (takes precedence over `pyproject.
 
 ```toml
 threshold = 50
+branch = ["main", "develop"]
 disable = ["format"]
 
 [severity]
@@ -227,6 +244,26 @@ Settings are applied in this order (later overrides earlier):
 - **Warning**: Reported but passes (fails with `--strict`)
 - **Info**: Informational only
 - **Ignore**: Tracked but not reported
+
+## Branch Filtering
+
+Run validations only on specific branches. Useful for CI/CD pipelines where you want strict rules on `main`/`develop` but flexibility on feature branches.
+
+### Glob Patterns
+
+| Pattern | Matches | Does Not Match |
+|---------|---------|----------------|
+| `main` | `main` | `main-v2`, `feature/main` |
+| `feature/*` | `feature/login`, `feature/auth` | `feature/user/profile` |
+| `release/**` | `release/v1`, `release/v1/hotfix` | `releases/v1` |
+| `*-stable` | `v1-stable`, `prod-stable` | `stable`, `v1-stable-2` |
+| `release-?` | `release-1`, `release-2` | `release-10` |
+
+### Behavior
+
+- **Empty `branch`**: Validates on all branches (default)
+- **Detached HEAD**: Validation is skipped
+- **Non-matching branch**: Validation is skipped (exits successfully)
 
 ## Contributing
 

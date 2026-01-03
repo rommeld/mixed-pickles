@@ -434,6 +434,7 @@ impl ValidationConfig {
         check_imperative=true,
         branches=None
     ))]
+    #[allow(clippy::too_many_arguments)]
     fn py_new(
         threshold: usize,
         check_short: bool,
