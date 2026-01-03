@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-01-03
+
 ### Added
 
 - add branch selection to configuration (a779633)
