@@ -165,6 +165,47 @@ repos:
         stages: [pre-push]
 ```
 
+### CI/CD Integration
+
+#### GitHub Actions
+
+Add to your workflow (`.github/workflows/lint-commits.yml`):
+
+```yaml
+name: Lint Commits
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for commit analysis
+      - run: pip install mixed-pickles
+      - run: mixed-pickles --strict --quiet
+```
+
+#### GitLab CI
+
+Add to your `.gitlab-ci.yml`:
+
+```yaml
+lint-commits:
+  stage: lint
+  image: python:3.12
+  before_script:
+    - pip install mixed-pickles
+  script:
+    - mixed-pickles --strict --quiet
+  rules:
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop"
+```
+
 ## CLI Options
 
 | Option             | Description                                  |
