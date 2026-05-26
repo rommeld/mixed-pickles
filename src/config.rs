@@ -322,11 +322,13 @@ branch = ["main"]
     }
 
     #[test]
-    fn test_no_config_file_found() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let result = find_config_file(temp_dir.path());
-        // May find config in parent; just verify no panic
-        assert!(result.is_none() || result.is_some());
+    fn test_no_config_file_found_in_isolated_tree() {
+        let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+        let isolated = temp_dir.path().join("isolated");
+        std::fs::create_dir_all(&isolated).expect("isolated directory should be created");
+
+        let result = find_config_file(&isolated);
+        assert!(result.is_none());
     }
 
     #[test]

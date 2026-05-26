@@ -313,31 +313,6 @@ fn analyze_commits(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
-/// CLI entry point. Exits with code 1 if validation issues are found.
-#[pyfunction]
-fn main(py: Python<'_>) {
-    let sys = py.import("sys").expect("Failed to import sys");
-    let argv: Vec<String> = sys
-        .getattr("argv")
-        .expect("Failed to get argv")
-        .extract()
-        .expect("Failed to extract argv");
-
-    let cli = match GitCLI::try_parse_from(&argv) {
-        Ok(cli) => cli,
-        Err(e) => e.exit(),
-    };
-
-    match cli.run() {
-        Ok(()) => {}
-        Err(CLIError::ValidationFailed(_)) => std::process::exit(1),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
-    }
-}
-
 #[pymodule]
 mod mixed_pickles {
     #[pymodule_export]
@@ -346,8 +321,6 @@ mod mixed_pickles {
     use super::commit::Commit;
     #[pymodule_export]
     use super::fetch_commits;
-    #[pymodule_export]
-    use super::main;
     #[pymodule_export]
     use super::validation::Severity;
     #[pymodule_export]

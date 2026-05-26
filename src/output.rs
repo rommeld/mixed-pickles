@@ -39,6 +39,13 @@ fn pluralize(count: usize, singular: &str, plural: &str) -> String {
     }
 }
 
+fn sanitize_for_terminal(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| !c.is_control() || matches!(c, '\n' | '\r' | '\t'))
+        .collect()
+}
+
 pub fn print_results(
     validation_results: &[ValidationResult],
     total_commits: usize,
@@ -83,12 +90,13 @@ pub fn print_results(
             for result in validation_results {
                 println!(
                     "Commit {} by {} <{}>",
-                    result.commit.hash(),
-                    result.commit.author_name(),
-                    result.commit.author_email()
+                    sanitize_for_terminal(result.commit.hash()),
+                    sanitize_for_terminal(result.commit.author_name()),
+                    sanitize_for_terminal(result.commit.author_email())
                 );
                 let subject = result.commit.subject();
-                println!("  Subject: \"{}\"", subject);
+                let safe_subject = sanitize_for_terminal(subject);
+                println!("  Subject: \"{}\"", safe_subject);
                 for finding in &result.findings {
                     println!(
                         "  {} {}",
@@ -96,7 +104,8 @@ pub fn print_results(
                         finding.validation
                     );
                     let suggestion = finding.validation.suggest(subject);
-                    println!("    → {}", suggestion);
+                    let safe_suggestion = sanitize_for_terminal(&suggestion);
+                    println!("    → {}", safe_suggestion);
                 }
                 println!();
             }

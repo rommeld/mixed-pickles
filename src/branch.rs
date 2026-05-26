@@ -6,7 +6,7 @@ use std::process::Command;
 use crate::error::CLIError;
 
 /// Get the current git branch name.
-/// Returns None if in detached HEAD state.
+/// Returns None only if in detached HEAD state.
 pub fn get_current_branch(repo_path: Option<&PathBuf>) -> Result<Option<String>, CLIError> {
     let mut command = Command::new("git");
 
@@ -18,11 +18,15 @@ pub fn get_current_branch(repo_path: Option<&PathBuf>) -> Result<Option<String>,
 
     if output.status.success() {
         let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(Some(branch))
-    } else {
-        // Detached HEAD state or other issue - return None
-        Ok(None)
+        return Ok(Some(branch));
     }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("not a symbolic ref") {
+        return Ok(None);
+    }
+
+    Err(CLIError::GitCommandFailed(stderr.trim().to_string()))
 }
 
 /// Check if a branch name matches any of the given patterns.
@@ -255,9 +259,7 @@ mod tests {
         fn returns_error_for_nonexistent_path() {
             let path = PathBuf::from("/nonexistent/path/to/repo");
             let result = get_current_branch(Some(&path));
-            // Should either error or return None, depending on git behavior
-            // The important thing is it doesn't panic
-            assert!(result.is_ok() || result.is_err());
+            assert!(result.is_err());
         }
     }
 }
