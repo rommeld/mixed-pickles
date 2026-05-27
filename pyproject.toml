@@ -32,7 +32,7 @@ Changelog = "https://github.com/rommeld/mixed-pickles/blob/main/CHANGELOG.md"
 Issues = "https://github.com/rommeld/mixed-pickles/issues"
 
 [project.scripts]
-mixed-pickles = "mixed_pickles:main"
+mixed-pickles = "mixed_pickles:cli_entrypoint"
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0.3", "maturin>=1.0,<2.0", "pygments>=2.20.0"]

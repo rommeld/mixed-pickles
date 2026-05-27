@@ -16,6 +16,7 @@ use error::CLIError;
 use git::{count_commits, fetch_commits as git_fetch_commits, validate_repo_path};
 use output::print_results;
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 use validation::{Severity, ValidationConfig, validate_commits};
 
 pub use commit::Commit;
@@ -313,18 +314,62 @@ fn analyze_commits(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+/// Python entrypoint used by the `mixed-pickles` console script.
+#[pyfunction]
+#[pyo3(signature = ())]
+fn cli_entrypoint() -> i32 {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let argv = if argv.is_empty() {
+        vec!["mixed-pickles".to_string()]
+    } else {
+        argv
+    };
+
+    let cli = match GitCLI::try_parse_from(argv) {
+        Ok(cli) => cli,
+        Err(e) => {
+            let exit_code = e.exit_code();
+            if e.use_stderr() {
+                eprintln!("{e}");
+            } else {
+                print!("{e}");
+            }
+            return exit_code;
+        }
+    };
+
+    if let Err(e) = cli.run() {
+        match e {
+            CLIError::ValidationFailed(_) => {}
+            _ => eprintln!("Error: {}", e),
+        }
+        1
+    } else {
+        0
+    }
+}
+
 #[pymodule]
-mod mixed_pickles {
-    #[pymodule_export]
-    use super::analyze_commits;
-    #[pymodule_export]
-    use super::commit::Commit;
-    #[pymodule_export]
-    use super::fetch_commits;
-    #[pymodule_export]
-    use super::validation::Severity;
-    #[pymodule_export]
-    use super::validation::Validation;
-    #[pymodule_export]
-    use super::validation::ValidationConfig;
+fn mixed_pickles(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<Commit>()?;
+    m.add_class::<Validation>()?;
+    m.add_class::<ValidationConfig>()?;
+    m.add_class::<Severity>()?;
+    m.add_function(wrap_pyfunction!(fetch_commits, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_commits, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_entrypoint, m)?)?;
+    let list = PyList::new(
+        m.py(),
+        &[
+            "cli_entrypoint",
+            "analyze_commits",
+            "fetch_commits",
+            "Commit",
+            "Severity",
+            "Validation",
+            "ValidationConfig",
+        ],
+    )?;
+    m.add("__all__", list)?;
+    Ok(())
 }
