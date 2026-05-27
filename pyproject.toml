@@ -7,7 +7,7 @@ name = "mixed-pickles"
 description = "A fast git commit message linter written in Rust"
 authors = [{ name = "Denny Rommel", email = "rommel.denny@gmail.com" }]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dynamic = ["version"]
 license = "MIT"
 keywords = ["git", "commit", "linter", "conventional-commits", "rust"]
@@ -17,7 +17,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -36,7 +35,7 @@ Issues = "https://github.com/rommeld/mixed-pickles/issues"
 mixed-pickles = "mixed_pickles:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0,!=9.0.2", "maturin>=1.0,<2.0", "pygments>=2.20.0"]
+dev = ["pytest>=9.0.3", "maturin>=1.0,<2.0", "pygments>=2.20.0"]
 
 [tool.maturin]
 module-name = "mixed_pickles"
