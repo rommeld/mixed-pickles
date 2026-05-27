@@ -360,7 +360,7 @@ fn mixed_pickles(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cli_entrypoint, m)?)?;
     let list = PyList::new(
         m.py(),
-        &[
+        [
             "cli_entrypoint",
             "analyze_commits",
             "fetch_commits",
