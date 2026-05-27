@@ -72,14 +72,13 @@ fn glob_match_impl(pattern: &[u8], text: &[u8]) -> bool {
                     star_t_idx = Some(t_idx);
                     continue;
                 }
-                b'?' => {
+                b'?'
                     // ? matches any single character except /
-                    if text[t_idx] != b'/' {
+                    if text[t_idx] != b'/' => {
                         p_idx += 1;
                         t_idx += 1;
                         continue;
                     }
-                }
                 c if c == text[t_idx] => {
                     p_idx += 1;
                     t_idx += 1;
